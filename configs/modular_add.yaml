@@ -1,0 +1,19 @@
+# Nanda et al. (2023) grokking setup: 1-layer transformer, p=113, 30% of pairs, full batch.
+name: modular_add
+task:
+  kind: modular
+  p: 113
+  train_frac: 0.3
+model:
+  d_model: 128
+  n_layers: 1
+  n_heads: 4
+  d_mlp: 512
+  max_positions: 3
+train:
+  steps: 40000
+  batch_size: 0
+  lr: 1.0e-3
+  weight_decay: 1.0
+  eval_every: 100
+  checkpoint_every: 500
