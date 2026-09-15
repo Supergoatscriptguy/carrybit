@@ -22,6 +22,18 @@ class ModularConfig:
 
 
 @dataclass
+class ArithmeticConfig:
+    max_digits: int = 20
+    reverse: bool = True  # least significant digit first
+    zero_pad: bool = False  # pad both operands to the same length, answer to one more
+    positions: str = "sequential"  # sequential | abacus | coupled
+    blanks: int = 0  # max aligned blank tokens inserted per number during training
+    offset_max: int = 100  # random start for abacus and coupled position ids during training
+    test_digits: tuple[int, ...] = (5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100)
+    test_examples: int = 256
+
+
+@dataclass
 class TrainConfig:
     steps: int = 40_000
     batch_size: int = 0  # 0 means full batch, which only makes sense for the modular task
@@ -29,19 +41,21 @@ class TrainConfig:
     weight_decay: float = 1.0
     betas: tuple[float, float] = (0.9, 0.98)
     warmup_steps: int = 0
+    cosine: bool = False  # decay lr to zero after warmup
+    amp: bool = False  # bfloat16 autocast
     eval_every: int = 100
     checkpoint_every: int = 1000
     seed: int = 0
     wandb: bool = False
 
 
-TASKS = {"modular": ModularConfig}
+TASKS = {"modular": ModularConfig, "arithmetic": ArithmeticConfig}
 
 
 @dataclass
 class Config:
     name: str
-    task: ModularConfig
+    task: ModularConfig | ArithmeticConfig
     model: ModelConfig = field(default_factory=ModelConfig)
     train: TrainConfig = field(default_factory=TrainConfig)
 
