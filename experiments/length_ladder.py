@@ -3,10 +3,13 @@ digit count. Finished runs are skipped, so this can be interrupted and restarted
 
     uv run python experiments/length_ladder.py            # train what is missing, then plot
     uv run python experiments/length_ladder.py --plot     # plot only
+    uv run python experiments/length_ladder.py --watch    # live status board for a running ladder
 """
 
 import argparse
 import json
+import os
+import time
 from pathlib import Path
 
 import matplotlib.pyplot as plt
@@ -76,9 +79,47 @@ def plot():
     save(fig, "length_ladder")
 
 
+def watch(refresh: float = 10.0):
+    steps = load_config("configs/addition.yaml").train.steps
+    while True:
+        lines, done = [], 0
+        for rung in RUNGS:
+            for seed in SEEDS:
+                d = run_dir(rung, seed)
+                label = f"{rung:<20} seed {seed}"
+                if not (d / "metrics.csv").exists():
+                    lines.append(f"  {label}  pending")
+                    continue
+                m = read_metrics(d)
+                acc = " ".join(f"{k[4:]}:{m[k][-1]:.2f}" for k in m if k.startswith("acc_"))
+                if int(m["step"][-1]) == steps:
+                    done += 1
+                    lines.append(f"  {label}  done   {acc}")
+                    continue
+                # Metrics only land at eval time, so extrapolate the step from the wall clock.
+                last_step, last_elapsed = m["step"][-1], m["elapsed"][-1]
+                started = os.path.getmtime(d / "metrics.csv") - last_elapsed
+                rate = last_step / last_elapsed if last_step else 0
+                est = min(steps, int((time.time() - started) * rate)) if rate else 0
+                remaining = (steps - est) / rate / 60 if rate else float("nan")
+                bar = "#" * int(30 * est / steps)
+                lines.append(f"> {label}  [{bar:<30}] {est:>6}/{steps}  ~{remaining:.0f} min left")
+                lines.append(f"  {'':<27}{acc}")
+        os.system("cls" if os.name == "nt" else "clear")
+        print(f"length ladder  {done}/{len(RUNGS) * len(SEEDS)} runs done  ({time.strftime('%H:%M:%S')})\n")
+        print("\n".join(lines))
+        time.sleep(refresh)
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--plot", action="store_true", help="skip training")
-    if not ap.parse_args().plot:
+    ap.add_argument("--watch", action="store_true", help="show live progress of a running ladder")
+    args = ap.parse_args()
+    if args.watch:
+        watch()
+    elif args.plot:
+        plot()
+    else:
         train_missing()
-    plot()
+        plot()
