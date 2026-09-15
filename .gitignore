@@ -1,0 +1,8 @@
+.venv/
+runs/
+wandb/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+*.log
