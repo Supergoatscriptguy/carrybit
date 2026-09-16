@@ -49,6 +49,58 @@ uv run python -m carrybit.train configs/modular_add.yaml
 uv run python experiments/grokking_curve.py
 ```
 
+### Length generalization: the ladder
+
+The main experiment. Train on addition with operands of 1 to 20 digits, then
+test on operands of exactly n digits for n up to 100, with exact match on the
+whole answer as the score. Six ways of presenting the problem, same 3.4M
+parameter model (4 layers, width 256), same budget (50k steps of 256 examples),
+three seeds each:
+
+- **plain**: `$653+49=702$`, most significant digit first.
+- **reversed**: digits least significant first, so the carry flows left to right.
+- **reversed + zero pad**: operands padded to the same length, answer to one more.
+- **abacus** (McLeish et al.): learned position embedding that restarts at 1 for
+  every number, with a random offset during training.
+- **position coupling** (Cho et al.): digits of the same significance in both
+  operands and the answer share one position id.
+- **aligned blankspace**: zero padded, plus blank tokens inserted at the same
+  relative indices in both operands and the answer during training.
+
+![length ladder](assets/figures/length_ladder.png)
+
+Faint lines are seeds, the bold line is the mean, the dotted line is the
+longest training length. What happened:
+
+- Every format learns the training distribution, though plain is noticeably
+  worse at 20 digits (89% versus 100% for everything else). Reversing the digits
+  is the one free lunch in this list.
+- The three sequential-position formats fall to exactly zero one step past the
+  training length. Past 20 digits the model reads position embeddings it has
+  never seen, and per-digit error jumps from 0 to about 90% on every digit.
+- Abacus and position coupling both extend past the training length, and they
+  fail differently: gracefully. At 40 digits the best coupling seed still gets
+  each digit right 90 to 100% of the time, but with 41 digits per answer the
+  small errors compound into 7% exact match. The best abacus seed holds 75%
+  exact match at 40 digits.
+- Seed variance dominates. One abacus seed reaches 50 digits, the other two are
+  at zero by 25. Zhou et al. reported the same thing and it is not subtle.
+- Aligned blankspace did nothing here. It matches the zero pad baseline exactly.
+  I could not get the paper's PDF past OpenReview's bot check, so this is my
+  reading of the method from the abstract: blanks at identical relative indices
+  in all three numbers, up to 100 per number, no blanks at test time. If the
+  real method differs, this rung is testing something else.
+
+So no 10x on this budget. The papers that report 5x or more use bigger models,
+more layers, and far more examples. Whether that is the missing ingredient is
+the next question: `configs/addition_big.yaml` is the same ladder with 6 layers,
+width 384, training to 30 digits, testing to 200.
+
+```
+uv run python experiments/length_ladder.py
+uv run python experiments/length_ladder.py --watch    # live progress board while it runs
+```
+
 ## Related work
 
 - Power et al., [Grokking](https://arxiv.org/abs/2201.02177) (2022). The original observation.
