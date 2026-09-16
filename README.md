@@ -9,8 +9,8 @@ This started as a half-joke: what if you trained a tiny network to do CPU-style
 arithmetic and ran a pile of copies on a GPU as virtual cores? As engineering
 that is backwards, since the GPU already does exact arithmetic in hardware. As
 an excuse to study how small models learn algorithms it turned out to be a good
-one. Everything here runs on one consumer GPU in minutes, and the models are
-all well under a million parameters.
+one. Everything here runs on one consumer GPU in minutes to an hour, and the
+models top out at a few million parameters.
 
 ## Setup
 
