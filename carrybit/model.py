@@ -6,12 +6,15 @@ from carrybit.config import ModelConfig
 
 
 class Attention(nn.Module):
-    def __init__(self, d_model: int, n_heads: int, dropout: float):
+    def __init__(self, cfg: ModelConfig):
         super().__init__()
-        self.n_heads = n_heads
-        self.qkv = nn.Linear(d_model, 3 * d_model)
-        self.out = nn.Linear(d_model, d_model)
-        self.dropout = dropout
+        self.n_heads = cfg.n_heads
+        self.qkv = nn.Linear(cfg.d_model, 3 * cfg.d_model)
+        self.out = nn.Linear(cfg.d_model, cfg.d_model)
+        self.dropout = cfg.dropout
+        # Shaw-style relative positions as a learned per-head bias on the scores, indexed by
+        # how far back the key is. Causal attention only ever looks back, so one table suffices.
+        self.rel_bias = nn.Embedding(cfg.max_positions, cfg.n_heads) if cfg.pos_embed == "relative" else None
         # Set record=True to keep the last attention pattern around for inspection.
         self.record = False
         self.pattern = None
@@ -20,14 +23,26 @@ class Attention(nn.Module):
         B, T, D = x.shape
         q, k, v = self.qkv(x).view(B, T, 3, self.n_heads, D // self.n_heads).unbind(2)
         q, k, v = (t.transpose(1, 2) for t in (q, k, v))
+        causal = torch.ones(T, T, dtype=torch.bool, device=x.device).tril()
+        bias = None
+        if self.rel_bias is not None:
+            idx = torch.arange(T, device=x.device)
+            dist = (idx[:, None] - idx[None, :]).clamp(0, self.rel_bias.num_embeddings - 1)
+            bias = self.rel_bias(dist).permute(2, 0, 1)
         if self.record:
             scores = q @ k.transpose(-1, -2) / k.shape[-1] ** 0.5
-            mask = torch.ones(T, T, dtype=torch.bool, device=x.device).tril()
-            self.pattern = scores.masked_fill(~mask, float("-inf")).softmax(-1)
+            if bias is not None:
+                scores = scores + bias
+            self.pattern = scores.masked_fill(~causal, float("-inf")).softmax(-1)
             y = self.pattern @ v
-        else:
+        elif bias is None:
             y = F.scaled_dot_product_attention(
                 q, k, v, is_causal=True, dropout_p=self.dropout if self.training else 0.0
+            )
+        else:
+            mask = bias.masked_fill(~causal, float("-inf")).to(q.dtype)
+            y = F.scaled_dot_product_attention(
+                q, k, v, attn_mask=mask, dropout_p=self.dropout if self.training else 0.0
             )
         return self.out(y.transpose(1, 2).reshape(B, T, D))
 
@@ -36,7 +51,7 @@ class Block(nn.Module):
     def __init__(self, cfg: ModelConfig):
         super().__init__()
         self.ln1 = nn.LayerNorm(cfg.d_model)
-        self.attn = Attention(cfg.d_model, cfg.n_heads, cfg.dropout)
+        self.attn = Attention(cfg)
         self.ln2 = nn.LayerNorm(cfg.d_model)
         self.mlp = nn.Sequential(
             nn.Linear(cfg.d_model, cfg.d_mlp),
@@ -59,7 +74,7 @@ class Transformer(nn.Module):
         super().__init__()
         self.cfg = cfg
         self.embed = nn.Embedding(vocab_size, cfg.d_model)
-        self.pos_embed = nn.Embedding(cfg.max_positions, cfg.d_model) if cfg.positional else None
+        self.pos_embed = nn.Embedding(cfg.max_positions, cfg.d_model) if cfg.pos_embed == "absolute" else None
         self.blocks = nn.ModuleList(Block(cfg) for _ in range(cfg.n_layers))
         self.ln_f = nn.LayerNorm(cfg.d_model)
         self.unembed = nn.Linear(cfg.d_model, vocab_size, bias=False)

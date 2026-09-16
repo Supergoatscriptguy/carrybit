@@ -1,4 +1,5 @@
 import torch
+import torch.nn.functional as F
 
 from carrybit.config import ArithmeticConfig
 from carrybit.tokenizer import BLANK, END, EQ, PAD, PLUS
@@ -25,6 +26,12 @@ def digit_count(digits):
     return ((digits != 0) * idx).amax(1).clamp(min=1)
 
 
+def strip_blanks(tokens):
+    """Move blank tokens to the end of each row, keeping the order of everything else."""
+    order = (tokens == BLANK).long().argsort(dim=1, stable=True)
+    return tokens.gather(1, order)
+
+
 class Arithmetic:
     """Multi-digit addition with on-the-fly examples, laid out as $a+b=c$ and padded.
     All formatting is done with tensor ops so a batch costs about as much as a forward pass."""
@@ -34,6 +41,8 @@ class Arithmetic:
             raise ValueError("coupled positions need reversed, zero-padded operands")
         if cfg.blanks and not cfg.zero_pad:
             raise ValueError("aligned blanks need zero-padded operands")
+        if cfg.blanks and cfg.blanks < cfg.max_digits + 2:
+            raise ValueError("blanks must leave room for max_digits + 1 digits per number")
         self.cfg = cfg
         self.device = device
         self.vocab_size = 16
@@ -68,20 +77,38 @@ class Arithmetic:
         B, D = a.shape
         dev = a.device
         total, _ = add_digits(a, b)
+        # One spare zero column so operands can be shown at the answer's width.
+        a, b = F.pad(a, (0, 1)), F.pad(b, (0, 1))
         n = torch.maximum(la, lb)
-        if cfg.zero_pad:
+        if cfg.blanks:
+            # Aligned blankspace zero-pads the operands to the answer's width as well, so all
+            # three numbers share one layout of digits and blanks.
+            na = nb = nc = n + 1
+        elif cfg.zero_pad:
             na = nb = n
             nc = n + 1
         else:
             na, nb, nc = la, lb, digit_count(total)
 
-        W = D + 1 + cfg.blanks
-        if train and cfg.blanks:
-            k = torch.randint(0, cfg.blanks + 1, (B,), device=dev, generator=self.gen)
-            scores = torch.rand(B, W, device=dev, generator=self.gen)
-            scores[torch.arange(W, device=dev) >= (n + k)[:, None]] = 2.0
-            blank = scores.argsort(1).argsort(1) < k[:, None]
+        if cfg.blanks:
+            W = cfg.blanks
+            width = n + 1
+            if cfg.blanks_fixed:
+                p = torch.full_like(n, W)
+            elif train:
+                p = width + (torch.rand(B, device=dev, generator=self.gen) * (W - width + 1)).long()
+            else:
+                p = width
+            k = p - width
+            slot = torch.arange(W, device=dev)
+            if train:
+                scores = torch.rand(B, W, device=dev, generator=self.gen)
+                scores[slot >= p[:, None]] = 2.0
+                blank = scores.argsort(1).argsort(1) < k[:, None]
+            else:
+                blank = (slot >= width[:, None]) & (slot < p[:, None])
         else:
+            W = D + 1
             k = torch.zeros(B, dtype=torch.long, device=dev)
             blank = torch.zeros(B, W, dtype=torch.bool, device=dev)
         blanks_before = blank.cumsum(1) - blank.long()
@@ -158,9 +185,12 @@ class Arithmetic:
         p = ex["prompt_len"]
         prompt = ex["tokens"][:, :p]
         n_new = ex["tokens"].shape[1] - p
-        out = model.generate(prompt, n_new, ex["positions"])
+        out = model.generate(prompt, n_new, ex["positions"])[:, p:]
         expected = ex["answer"][:, p:]
-        ok = (out[:, p:] == expected) | (expected == PAD)
+        if self.cfg.blanks:
+            # Blanks in the answer are stripped before comparing, as in the paper.
+            out, expected = strip_blanks(out), strip_blanks(expected)
+        ok = (out == expected) | (expected == PAD) | (expected == BLANK)
         return ok.all(1).float().mean().item()
 
     def evaluate(self, model) -> dict:

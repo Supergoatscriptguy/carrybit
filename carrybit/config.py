@@ -11,7 +11,7 @@ class ModelConfig:
     n_heads: int = 4
     d_mlp: int = 512
     max_positions: int = 128
-    positional: bool = True
+    pos_embed: str = "absolute"  # absolute | relative | none
     dropout: float = 0.0
 
 
@@ -27,7 +27,8 @@ class ArithmeticConfig:
     reverse: bool = True  # least significant digit first
     zero_pad: bool = False  # pad both operands to the same length, answer to one more
     positions: str = "sequential"  # sequential | abacus | coupled
-    blanks: int = 0  # max aligned blank tokens inserted per number during training
+    blanks: int = 0  # aligned blankspace: total slots per number after blank insertion, 0 is off
+    blanks_fixed: bool = True  # every number fills all slots (ABA-fixed) or a random count (ABA-var)
     offset_max: int = 100  # random start for abacus and coupled position ids during training
     test_digits: tuple[int, ...] = (5, 10, 15, 20, 25, 30, 40, 50, 60, 80, 100)
     test_examples: int = 256

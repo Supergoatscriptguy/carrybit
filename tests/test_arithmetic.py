@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from carrybit.arithmetic import Arithmetic, add_digits
+from carrybit.arithmetic import Arithmetic, add_digits, strip_blanks
 from carrybit.config import ArithmeticConfig
 from carrybit.tokenizer import BLANK, PAD, decode, encode
 
@@ -11,7 +11,8 @@ RUNGS = {
     "zeropad": dict(zero_pad=True),
     "abacus": dict(positions="abacus"),
     "coupled": dict(zero_pad=True, positions="coupled"),
-    "blankspace": dict(zero_pad=True, blanks=8),
+    "blankspace_fixed": dict(zero_pad=True, blanks=12),
+    "blankspace_var": dict(zero_pad=True, blanks=12, blanks_fixed=False),
 }
 
 
@@ -112,22 +113,45 @@ def test_abacus_positions_restart_per_number():
         assert pos[plus] == pos[eq] == pos[0] == 0
 
 
-def test_blanks_are_aligned_across_all_three_numbers():
-    task = make(zero_pad=True, blanks=8)
-    ex = task.build(*task.sample(32, 6), train=True)
-    saw_blank = False
+def split_numbers(text: str):
+    a, rest = text[1:].split("+")
+    b, rest = rest.split("=")
+    return a, b, rest[: rest.index("$")]
+
+
+def blank_idx(s: str):
+    return [i for i, ch in enumerate(s) if ch == "_"]
+
+
+@pytest.mark.parametrize("fixed", [True, False])
+def test_blanks_are_aligned_across_all_three_numbers(fixed):
+    task = make(zero_pad=True, blanks=12, blanks_fixed=fixed)
+    ex = task.build(*task.sample(64, 6), train=True)
+    widths = set()
     for tok in ex["tokens"]:
-        text = decode(tok)
-        a, rest = text[1:].split("+")
-        b, rest = rest.split("=")
-        c = rest[: rest.index("$")]
-        blank_idx = lambda s: [i for i, ch in enumerate(s) if ch == "_"]
+        a, b, c = split_numbers(decode(tok))
         assert blank_idx(a) == blank_idx(b) == blank_idx(c)
-        assert len(c) == len(a) + 1 and c[-1] != "_"
-        saw_blank |= bool(blank_idx(a))
-    assert saw_blank
-    test = task.test_sets[3]["tokens"]
-    assert (test != BLANK).all()
+        assert len(a) == len(b) == len(c)
+        widths.add(len(a))
+    assert widths == {12} if fixed else len(widths) > 1
+
+
+def test_fixed_blanks_pad_to_the_right_at_test_time():
+    task = make(zero_pad=True, blanks=12)
+    for tok in task.test_sets[3]["tokens"]:
+        a, b, c = split_numbers(decode(tok))
+        assert a[:4].isdigit() and a[4:] == "_" * 8
+        assert blank_idx(a) == blank_idx(b) == blank_idx(c)
+
+
+def test_var_blanks_are_absent_at_test_time():
+    task = make(zero_pad=True, blanks=12, blanks_fixed=False)
+    assert (task.test_sets[3]["tokens"] != BLANK).all()
+
+
+def test_strip_blanks_keeps_digit_order():
+    tokens = torch.tensor([encode("1_2__3$ ")])
+    assert decode(strip_blanks(tokens)[0]) == "123$ ___".rstrip()
 
 
 def test_accuracy_is_one_for_an_oracle():
