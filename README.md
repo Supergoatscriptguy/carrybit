@@ -25,7 +25,9 @@ uv run pytest
 
 Every experiment is a YAML file in `configs/` and a script in `experiments/`.
 Training writes metrics to `runs/<name>/metrics.csv` and saves checkpoints
-alongside them. Any config value can be overridden on the command line:
+alongside them. Final checkpoints from every run in this README are on
+[Hugging Face](https://huggingface.co/SuperGoatScriptGuy/carrybit), with the
+config and metrics log next to each one. Any config value can be overridden on the command line:
 
 ```
 uv run python -m carrybit.train configs/modular_add.yaml train.weight_decay=0.1
