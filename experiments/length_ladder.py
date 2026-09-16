@@ -29,7 +29,10 @@ RUNGS = {
     "reversed + zero pad": ["task.zero_pad=true"],
     "abacus": ["task.positions=abacus"],
     "position coupling": ["task.zero_pad=true", "task.positions=coupled"],
-    "aligned blankspace": ["task.zero_pad=true", "task.blanks=100"],
+    "zero pad + relative": ["task.zero_pad=true", "model.pos_embed=relative"],
+    "blankspace var": ["task.zero_pad=true", "task.blanks=121", "task.blanks_fixed=false"],
+    "blankspace fixed": ["task.zero_pad=true", "task.blanks=121"],
+    "blankspace fixed + relative": ["task.zero_pad=true", "task.blanks=121", "model.pos_embed=relative"],
 }
 SEEDS = (0, 1, 2)
 
@@ -64,7 +67,8 @@ def plot(config: str, rungs: list[str], seeds=SEEDS):
     ncols = min(3, len(rungs))
     nrows = -(-len(rungs) // ncols)
     fig, axes = plt.subplots(nrows, ncols, figsize=(3 * ncols, 2.6 * nrows), sharex=True, sharey=True, squeeze=False)
-    colors = dict(zip(RUNGS, plt.rcParams["axes.prop_cycle"].by_key()["color"] + ["0.45"]))
+    palette = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    colors = {rung: palette[i % len(palette)] for i, rung in enumerate(RUNGS)}
     for ax in axes.flat[len(rungs):]:
         ax.set_visible(False)
     max_digits = max(cfg.task.test_digits)
