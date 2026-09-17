@@ -1,0 +1,29 @@
+# Fixed-width aligned blankspace at the scale the paper uses: 6 layers, width 384,
+# trained on 1 to 20 digits with every number padded to 121 slots, tested to 100 digits.
+name: blankspace_big
+task:
+  kind: arithmetic
+  max_digits: 20
+  reverse: true
+  zero_pad: true
+  positions: sequential
+  blanks: 121
+  blanks_fixed: true
+  test_digits: [5, 10, 20, 30, 40, 50, 60, 80, 100]
+  test_examples: 256
+model:
+  d_model: 384
+  n_layers: 6
+  n_heads: 6
+  d_mlp: 1536
+  max_positions: 512
+train:
+  steps: 50000
+  batch_size: 256
+  lr: 3.0e-4
+  weight_decay: 0.1
+  warmup_steps: 2000
+  cosine: true
+  amp: true
+  eval_every: 5000
+  checkpoint_every: 10000

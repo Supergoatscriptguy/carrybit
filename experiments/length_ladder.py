@@ -6,7 +6,9 @@ digit count. Finished runs are skipped, so this can be interrupted and restarted
     uv run python experiments/length_ladder.py --watch    # live status board for a running ladder
 
 Pass --config to run the same rungs on another base config, and --rungs to pick a subset.
-Runs land in runs/<config name> and the figure is named after the config.
+Runs land in runs/<config name> and the figure is named after the config. --set applies extra
+config overrides and --name gives the resulting runs their own folder and figure, so an
+ablation like --set train.cosine=false --name addition_constant_lr needs no new config file.
 """
 
 import argparse
@@ -48,21 +50,21 @@ def finished(d: Path) -> bool:
     return int(read_metrics(d)["step"][-1]) == steps
 
 
-def train_missing(config: str, rungs: list[str], seeds=SEEDS):
-    base = load_config(config).name
+def train_missing(config: str, rungs: list[str], seeds=SEEDS, overrides=()):
+    base = load_config(config, overrides).name
     for rung in rungs:
         for seed in seeds:
             d = run_dir(base, rung, seed)
             if finished(d):
                 continue
             name = f"{base} {rung} seed {seed}"
-            cfg = load_config(config, [*RUNGS[rung], f"train.seed={seed}", f"name={name}"])
+            cfg = load_config(config, [*overrides, *RUNGS[rung], f"train.seed={seed}", f"name={name}"])
             train(cfg, d)
             torch.cuda.empty_cache()
 
 
-def plot(config: str, rungs: list[str], seeds=SEEDS):
-    cfg = load_config(config)
+def plot(config: str, rungs: list[str], seeds=SEEDS, overrides=()):
+    cfg = load_config(config, overrides)
     use_style()
     ncols = min(3, len(rungs))
     nrows = -(-len(rungs) // ncols)
@@ -98,8 +100,8 @@ def plot(config: str, rungs: list[str], seeds=SEEDS):
     save(fig, "length_ladder" + (f"_{suffix}" if suffix else ""))
 
 
-def watch(config: str, rungs: list[str], seeds=SEEDS, refresh: float = 10.0):
-    cfg = load_config(config)
+def watch(config: str, rungs: list[str], seeds=SEEDS, overrides=(), refresh: float = 10.0):
+    cfg = load_config(config, overrides)
     steps = cfg.train.steps
     while True:
         lines, done = [], 0
@@ -136,15 +138,18 @@ if __name__ == "__main__":
     ap.add_argument("--config", default="configs/addition.yaml")
     ap.add_argument("--rungs", default=",".join(RUNGS), help="comma-separated subset of rungs")
     ap.add_argument("--seeds", default=",".join(map(str, SEEDS)))
+    ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE", help="extra config override")
+    ap.add_argument("--name", help="run folder and figure name when using --set")
     ap.add_argument("--plot", action="store_true", help="skip training")
     ap.add_argument("--watch", action="store_true", help="show live progress of a running ladder")
     args = ap.parse_args()
     rungs = args.rungs.split(",")
     seeds = tuple(int(s) for s in args.seeds.split(","))
+    overrides = args.set + ([f"name={args.name}"] if args.name else [])
     if args.watch:
-        watch(args.config, rungs, seeds)
+        watch(args.config, rungs, seeds, overrides)
     elif args.plot:
-        plot(args.config, rungs, seeds)
+        plot(args.config, rungs, seeds, overrides)
     else:
-        train_missing(args.config, rungs, seeds)
-        plot(args.config, rungs, seeds)
+        train_missing(args.config, rungs, seeds, overrides)
+        plot(args.config, rungs, seeds, overrides)
