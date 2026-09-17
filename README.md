@@ -51,6 +51,58 @@ uv run python -m carrybit.train configs/modular_add.yaml
 uv run python experiments/grokking_curve.py
 ```
 
+### Grokking sharpens structure that is already there
+
+Swaroop (2026) argues that grokking on modular addition does not discover the
+Fourier algorithm, it cleans up structure that formed during memorization. The
+measurement: take the DFT of each neuron's input weights for operand a, for
+operand b, and of its map to the logits. Structured neurons use one frequency
+in all three, and their phases obey phase_out = phase_a + phase_b, which is
+what makes the ReLU of two cosines add angles. The strongest test is to rebuild
+an MLP from nothing but those per-neuron frequencies, phases and amplitudes and
+ask how well it adds.
+
+I reproduced this on the paper's setup, a one-hidden-layer ReLU MLP with
+two-hot inputs, p = 97, 30% of pairs, weight decay 1:
+
+![Fourier tracking, MLP](assets/figures/grokking_fourier_mlp.png)
+
+The phase-sum relation holds at 0.999 from the first moment there are enough
+periodic neurons to measure it, around step 3000, and never wavers. The
+idealized model built from the extracted parameters runs far ahead of the
+network's own test accuracy: 55% versus 0.5% at step 7500, 85% versus 33% at
+step 20k. The network takes another 30k steps to catch up with the algorithm
+its own weights already encode. That is the paper's claim, and it reproduces.
+
+Then the same measurement on the one-layer transformer from the first
+section. A transformer neuron has no direct input weights per operand, so I
+use its pre-activation averaged over the other operand as a stand-in, and its
+column of the down-projection pushed through the unembedding as its logit map.
+Three weight decays:
+
+![Fourier tracking, transformer](assets/figures/grokking_fourier_transformer.png)
+
+- **Weight decay 1**: structure appears even earlier than in the MLP. The
+  idealized model is at 82% by step 1000 when the network tests at 34%, and
+  at 96% by step 1500 when the network tests at 54%.
+- **Weight decay 0.1**: grokking takes ten times longer, and the structure
+  tracks that. The idealized model is at 82% at step 5000, network at 32%.
+- **No weight decay**: the network never groks in 40k steps, sitting at 33%
+  test accuracy. Its extracted structure still reaches 81%. The algorithm is
+  latent in a network that never generalizes, which is the paper's noisy-label
+  result reproduced with a different obstacle.
+
+So the mechanism is architecture-independent as far as this test can tell.
+Weight decay controls how fast the network converges onto structure it forms
+anyway, not whether the structure forms.
+
+```
+uv run python -m carrybit.train configs/modular_mlp.yaml
+uv run python -m carrybit.train configs/modular_add.yaml train.weight_decay=0.1 name=modular_add_wd0.1 --run-dir runs/modular_add_wd0.1
+uv run python -m carrybit.train configs/modular_add.yaml train.weight_decay=0 name=modular_add_wd0 --run-dir runs/modular_add_wd0
+uv run python experiments/grokking_fourier.py
+```
+
 ### Length generalization: the ladder
 
 The main experiment. Train on addition with operands of 1 to 20 digits, then

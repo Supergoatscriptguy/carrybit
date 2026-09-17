@@ -87,16 +87,21 @@ PANELS = [
 def plot(curves: dict[str, dict], name: str, title: str):
     use_style()
     fig, axes = plt.subplots(2, 2, figsize=(8, 5.2), sharex=True)
+    first = min(m["step"][m["step"] > 0].min() for m in curves.values())
     for ax, (key, ylabel, panel_title) in zip(axes.flat, PANELS):
         for label, m in curves.items():
-            x = np.maximum(m["step"], 1)
-            ax.plot(x, m[key], label=label)
+            keep = m["step"] >= first
+            x = m["step"][keep]
+            ax.plot(x, m[key][keep], label=label)
             if key == "test_acc":
-                ax.plot(x, m["train_acc"], color=ax.lines[-1].get_color(), ls=":", lw=1)
+                ax.plot(x, m["train_acc"][keep], color=ax.lines[-1].get_color(), ls=":", lw=1)
+            if key == "idealized_acc":
+                ax.plot(x, m["test_acc"][keep], color=ax.lines[-1].get_color(), ls=":", lw=1)
         ax.set(xscale="log", title=panel_title, ylabel=ylabel, ylim=(-0.03, 1.03) if key != "phase_alignment" else (-1.03, 1.03))
     for ax in axes[1]:
         ax.set_xlabel("step")
     axes[0, 0].text(0.02, 0.9, "dotted: train", transform=axes[0, 0].transAxes, fontsize=8, color="0.4")
+    axes[1, 1].text(0.02, 0.9, "dotted: the network's own test accuracy", transform=axes[1, 1].transAxes, fontsize=8, color="0.4")
     if len(curves) > 1:
         axes[0, 1].legend(loc="lower right")
     fig.suptitle(title, x=0.02, ha="left")
