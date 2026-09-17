@@ -95,7 +95,8 @@ def plot(config: str, rungs: list[str], seeds=SEEDS, overrides=()):
         ax.set_xlabel("test digits")
     for ax in axes[:, 0]:
         ax.set_ylabel("exact match")
-    axes[0, 0].text(cfg.task.max_digits + max_digits / 50, 0.45, f"trained up to {cfg.task.max_digits}", color="0.4", fontsize=8)
+    axes[0, 0].text(cfg.task.max_digits + max_digits / 50, 0.45, f"trained up to {cfg.task.max_digits}", color="0.4", fontsize=8,
+                    bbox=dict(facecolor="white", edgecolor="none", pad=1))
     fig.tight_layout()
     suffix = cfg.name.partition("_")[2]
     save(fig, "length_ladder" + (f"_{suffix}" if suffix else ""))

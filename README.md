@@ -55,7 +55,7 @@ uv run python experiments/grokking_curve.py
 
 The main experiment. Train on addition with operands of 1 to 20 digits, then
 test on operands of exactly n digits for n up to 100, with exact match on the
-whole answer as the score. Six ways of presenting the problem, same 3.4M
+whole answer as the score. Nine ways of presenting the problem, same 3.4M
 parameter model (4 layers, width 256), same budget (50k steps of 256 examples),
 three seeds each:
 
@@ -66,42 +66,121 @@ three seeds each:
   every number, with a random offset during training.
 - **position coupling** (Cho et al.): digits of the same significance in both
   operands and the answer share one position id.
-- **aligned blankspace**: zero padded, plus blank tokens inserted at the same
-  relative indices in both operands and the answer during training.
+- **zero pad + relative**: a learned per-head bias on attention scores indexed by
+  distance, instead of absolute positions. A control for the last rung.
+- **blankspace var** and **blankspace fixed** (the ICLR submission below): blank
+  tokens inserted at identical indices in both operands and the answer during
+  training. In the var version each example gets a random number of blanks and
+  the test input has none. In the fixed version every number is padded to 121
+  slots at training time and test operands are padded with blanks on the right
+  to the same width, so the sequence length never changes.
+- **blankspace fixed + relative**: the paper's headline combination.
 
 ![length ladder](assets/figures/length_ladder.png)
 
 Faint lines are seeds, the bold line is the mean, the dotted line is the
-longest training length. What happened:
+longest training length. Exact match at the end of training:
+
+| format | 20 digits | 30 | 40 | 50 |
+|---|---|---|---|---|
+| plain | 0.89 | 0 | 0 | 0 |
+| reversed, zero pad, zero pad + relative, blankspace var | 1.00 | 0 | 0 | 0 |
+| abacus | 1.00 | 0.31 (best 0.93) | 0.25 (best 0.75) | 0.08 |
+| position coupling | 1.00 | 0.31 (best 0.92) | 0.04 | 0 |
+| blankspace fixed | 0.99 | 0.81 (best 0.96) | 0.39 (best 0.68) | 0.04 |
+| blankspace fixed + relative | 0 | 0 | 0 | 0 |
+
+What happened:
 
 - Every format learns the training distribution, though plain is noticeably
-  worse at 20 digits (89% versus 100% for everything else). Reversing the digits
-  is the one free lunch in this list.
-- The three sequential-position formats fall to exactly zero one step past the
-  training length. Past 20 digits the model reads position embeddings it has
-  never seen, and per-digit error jumps from 0 to about 90% on every digit.
-- Abacus and position coupling both extend past the training length, and they
-  fail differently: gracefully. At 40 digits the best coupling seed still gets
-  each digit right 90 to 100% of the time, but with 41 digits per answer the
-  small errors compound into 7% exact match. The best abacus seed holds 75%
-  exact match at 40 digits.
-- Seed variance dominates. One abacus seed reaches 50 digits, the other two are
-  at zero by 25. Zhou et al. reported the same thing and it is not subtle.
-- Aligned blankspace did nothing here. It matches the zero pad baseline exactly.
-  I could not get the paper's PDF past OpenReview's bot check, so this is my
-  reading of the method from the abstract: blanks at identical relative indices
-  in all three numbers, up to 100 per number, no blanks at test time. If the
-  real method differs, this rung is testing something else.
-
-So no 10x on this budget. The papers that report 5x or more use bigger models,
-more layers, and far more examples. Whether that is the missing ingredient is
-the next question: `configs/addition_big.yaml` is the same ladder with 6 layers,
-width 384, training to 30 digits, testing to 200.
+  worse at 20 digits. Reversing the digits is the one free lunch in this list.
+- Everything with sequential positions falls to exactly zero one step past the
+  training length, relative bias included. Per-digit error jumps from 0 to
+  about 90% on every digit: the model has no idea where it is.
+- Abacus and position coupling extend past the training length and fail
+  gracefully. At 40 digits the best coupling seed still gets each digit right
+  90 to 100% of the time, but with 41 digits per answer the small errors
+  compound into 7% exact match.
+- **Fixed-width blankspace is the only data-only trick that generalizes**, and
+  on this budget it is the best rung, about 2x with no architecture change. The
+  variable-width version does nothing, so it is the fixed layout doing the
+  work, not the blanks. Note what the fixed layout buys: a 40-digit test problem
+  has the same sequence length as a 20-digit training problem, just fewer
+  blanks. That is a weaker kind of length generalization than the other methods
+  attempt, and worth keeping in mind when reading the paper's 200-digit claim.
+- The paper's headline combination, fixed blankspace with relative positions,
+  never learned at all here: zero accuracy even at 5 digits, on all three
+  seeds. The model emits blanks where digits should go. My relative bias is a
+  scalar per head and distance, which is less expressive than the Shaw-style
+  relative embeddings the paper uses, so this is a limitation of my
+  implementation rather than a verdict on theirs.
+- Seed variance dominates everything else. One abacus seed reaches 50 digits,
+  the other two are at zero by 25. Zhou et al. reported the same thing and it
+  is not subtle.
 
 ```
 uv run python experiments/length_ladder.py
 uv run python experiments/length_ladder.py --watch    # live progress board while it runs
 ```
+
+### Scaling up
+
+The papers that report 5x or more use bigger models and far more examples, so
+the two position-id methods got a second run at 11M parameters (6 layers,
+width 384), trained on 1 to 30 digits for 60k steps and tested to 200.
+
+![scaled ladder](assets/figures/length_ladder_big.png)
+
+Scale helped position coupling and did nothing for abacus. Coupling went from
+about 1.7x to 2.5x: the better seed holds 97% at 50 digits and 75% at 60. Both
+abacus seeds generalized zero digits past their training length, worse than
+the best small abacus seed. Still nowhere near 200.
+
+```
+uv run python experiments/length_ladder.py --config configs/addition_big.yaml --rungs "abacus,position coupling" --seeds 0,1
+```
+
+### Out-of-distribution accuracy is a transient
+
+This one I did not expect. Every run that generalized past its training length
+peaked early and then lost most of it, while in-distribution accuracy stayed
+at 100% and training loss kept falling. The 11M coupling seed above was at 85%
+on 60 digits at step 15k and 75% at the end. The best small coupling seed was
+at 63% on 40 digits at step 17k and 11% at the end.
+
+![generalization over training](assets/figures/generalization_over_training.png)
+
+Two ablations on the small coupling model, three seeds each:
+
+- **Constant learning rate** instead of cosine decay: the erosion gets worse,
+  not better. Seed 0 peaked at 71% on 40 digits and ended at 2%. So the decay
+  to zero is not the cause; if anything it freezes the model wherever it lands.
+- **No weight decay**: the one seed that generalized climbed monotonically to
+  92% at 40 digits and never eroded. The other two seeds never generalized.
+
+So with weight decay, every run that found a generalizing solution later drifted
+away from it. Without weight decay, the one run that found it kept it. That is
+one seed, so treat it as a lead rather than a result. But the practical
+consequence holds regardless: papers reporting the final checkpoint and papers
+reporting the best checkpoint are measuring different things, and the gap here
+is large.
+
+```
+uv run python experiments/length_ladder.py --rungs "position coupling" --set train.cosine=false --name addition_constant_lr
+uv run python experiments/length_ladder.py --rungs "position coupling" --set train.weight_decay=0 --name addition_no_wd
+uv run python experiments/generalization_over_training.py
+```
+
+## What I would try next
+
+- More seeds on the no-weight-decay coupling run. If most of them hold their
+  generalization, weight decay is the culprit and that is worth a proper study.
+- Fixed-width blankspace at the paper's model size, which is running as I write
+  this.
+- Shaw-style relative embeddings, to give the paper's headline combination a
+  fair test.
+- A key-value cache for generation. Evaluating 200-digit problems without one is
+  quadratic and dominated the cost of the scaled runs.
 
 ## Related work
 
