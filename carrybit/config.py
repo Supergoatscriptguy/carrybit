@@ -6,6 +6,7 @@ import yaml
 
 @dataclass
 class ModelConfig:
+    arch: str = "transformer"  # transformer | mlp (two-hot input, one hidden layer, modular task only)
     d_model: int = 128
     n_layers: int = 1
     n_heads: int = 4

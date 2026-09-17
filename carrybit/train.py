@@ -10,7 +10,7 @@ import torch.nn.functional as F
 
 from carrybit.arithmetic import Arithmetic
 from carrybit.config import ArithmeticConfig, Config, ModularConfig, load_config
-from carrybit.model import Transformer
+from carrybit.model import build_model
 from carrybit.modular import ModularAddition
 
 
@@ -42,7 +42,7 @@ def train(cfg: Config, run_dir: Path, device="cuda"):
         # memory over PCIe rather than failing, so cap the process and let the cache be freed.
         torch.cuda.set_per_process_memory_fraction(0.85)
     task = make_task(cfg, device)
-    model = Transformer(task.vocab_size, cfg.model).to(device)
+    model = build_model(task.vocab_size, cfg.model).to(device)
     opt = torch.optim.AdamW(
         model.parameters(), lr=cfg.train.lr, betas=cfg.train.betas, weight_decay=cfg.train.weight_decay
     )

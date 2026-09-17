@@ -108,3 +108,29 @@ class Transformer(nn.Module):
 
     def n_params(self) -> int:
         return sum(p.numel() for p in self.parameters())
+
+
+class TwoHotMLP(nn.Module):
+    """The one-hidden-layer ReLU MLP from Swaroop (2026): the two operands enter as a
+    concatenated pair of one-hot vectors. Takes the same [a, b, =] tokens as the transformer
+    and returns logits at every position so the training loop needs no special case."""
+
+    def __init__(self, vocab_size: int, cfg: ModelConfig):
+        super().__init__()
+        self.vocab_size = vocab_size
+        self.hidden = nn.Linear(2 * vocab_size, cfg.d_mlp)
+        self.out = nn.Linear(cfg.d_mlp, vocab_size)
+
+    def forward(self, tokens, positions=None):
+        x = torch.cat([F.one_hot(tokens[:, 0], self.vocab_size), F.one_hot(tokens[:, 1], self.vocab_size)], 1)
+        logits = self.out(F.relu(self.hidden(x.float())))
+        return logits[:, None].expand(-1, tokens.shape[1], -1)
+
+    def n_params(self) -> int:
+        return sum(p.numel() for p in self.parameters())
+
+
+def build_model(vocab_size: int, cfg: ModelConfig):
+    if cfg.arch == "mlp":
+        return TwoHotMLP(vocab_size, cfg)
+    return Transformer(vocab_size, cfg)

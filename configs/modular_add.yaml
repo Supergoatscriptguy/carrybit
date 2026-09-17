@@ -16,4 +16,4 @@ train:
   lr: 1.0e-3
   weight_decay: 1.0
   eval_every: 100
-  checkpoint_every: 500
+  checkpoint_every: 100
