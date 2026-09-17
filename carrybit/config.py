@@ -24,6 +24,7 @@ class ModularConfig:
 
 @dataclass
 class ArithmeticConfig:
+    op: str = "add"  # add | sub (subtraction keeps a >= b by swapping, so answers are never negative)
     max_digits: int = 20
     min_digits: int = 1
     carry_heavy: float = 0.0  # fraction of training examples given a long run of columns summing to 9

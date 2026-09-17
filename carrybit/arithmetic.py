@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 
 from carrybit.config import ArithmeticConfig
-from carrybit.tokenizer import BLANK, END, EQ, PAD, PLUS
+from carrybit.tokenizer import BLANK, END, EQ, MINUS, PAD, PLUS
 
 
 def add_digits(a, b):
@@ -19,6 +19,31 @@ def add_digits(a, b):
         carry = t // 10
     total[:, D] = carry
     return total, carries
+
+
+def sub_digits(a, b):
+    """a - b for digit tensors with a >= b, stored least significant first. Returns the
+    (B, D+1) difference with an always-zero top digit, and the (B, D) borrow into each column."""
+    B, D = a.shape
+    diff = torch.zeros(B, D + 1, dtype=a.dtype, device=a.device)
+    borrows = torch.zeros(B, D, dtype=a.dtype, device=a.device)
+    borrow = torch.zeros(B, dtype=a.dtype, device=a.device)
+    for i in range(D):
+        borrows[:, i] = borrow
+        t = a[:, i] - b[:, i] - borrow
+        borrow = (t < 0).long()
+        diff[:, i] = t + 10 * borrow
+    return diff, borrows
+
+
+def order_operands(a, b, la, lb):
+    """Swap each pair so the first operand is the larger number."""
+    idx = torch.arange(a.shape[1], device=a.device)
+    differs = (a != b) * (idx + 1)
+    top = differs.argmax(1)
+    a_smaller = a.gather(1, top[:, None]).squeeze(1) < b.gather(1, top[:, None]).squeeze(1)
+    swap = a_smaller[:, None]
+    return torch.where(swap, b, a), torch.where(swap, a, b), torch.where(a_smaller, lb, la), torch.where(a_smaller, la, lb)
 
 
 def digit_count(digits):
@@ -76,7 +101,11 @@ class Arithmetic:
         cfg = self.cfg
         B, D = a.shape
         dev = a.device
-        total, _ = add_digits(a, b)
+        if cfg.op == "sub":
+            a, b, la, lb = order_operands(a, b, la, lb)
+            total, _ = sub_digits(a, b)
+        else:
+            total, _ = add_digits(a, b)
         # One spare zero column so operands can be shown at the answer's width.
         a, b = F.pad(a, (0, 1)), F.pad(b, (0, 1))
         n = torch.maximum(la, lb)
@@ -140,7 +169,7 @@ class Arithmetic:
         tokens = torch.where(in_b, digits_of(b, nb), tokens)
         tokens = torch.where(in_c, digits_of(total, nc), tokens)
         tokens[is_blank] = BLANK
-        tokens[t == (1 + sa)[:, None]] = PLUS
+        tokens[t == (1 + sa)[:, None]] = MINUS if cfg.op == "sub" else PLUS
         tokens[t == (2 + sa + sb)[:, None]] = EQ
         tokens[t == end[:, None]] = END
 

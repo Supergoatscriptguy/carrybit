@@ -22,13 +22,14 @@ def make(**kw):
 
 
 def parse(text: str, reverse: bool):
-    """Turn '$a+b=c$' back into ints, ignoring blanks."""
+    """Turn '$a+b=c$' or '$a-b=c$' back into ints, ignoring blanks."""
     body = text.strip("$ ").replace("_", "")
     lhs, c = body.split("=")
-    a, b = lhs.split("+")
+    op = "-" if "-" in lhs else "+"
+    a, b = lhs.split(op)
     if reverse:
         a, b, c = a[::-1], b[::-1], c[::-1]
-    return int(a), int(b), int(c)
+    return int(a), int(b), int(c), op
 
 
 def test_tokenizer_roundtrip():
@@ -50,8 +51,17 @@ def test_examples_are_correct_sums(rung, train):
     a, b, la, lb = task.sample(64, 6)
     ex = task.build(a, b, la, lb, train=train)
     for row in ex["tokens"]:
-        x, y, z = parse(decode(row), task.cfg.reverse)
+        x, y, z, _ = parse(decode(row), task.cfg.reverse)
         assert x + y == z
+
+
+@pytest.mark.parametrize("rung", ["reversed", "coupled", "blankspace_fixed"])
+def test_subtraction_examples_are_correct_and_never_negative(rung):
+    task = make(op="sub", **RUNGS[rung])
+    for ex in (task.build(*task.sample(64, 6), train=True), task.test_sets[5]):
+        for row in ex["tokens"]:
+            x, y, z, op = parse(decode(row), task.cfg.reverse)
+            assert op == "-" and x >= y and x - y == z
 
 
 @pytest.mark.parametrize("rung", RUNGS)
