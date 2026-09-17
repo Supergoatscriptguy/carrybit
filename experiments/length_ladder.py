@@ -47,7 +47,8 @@ def finished(d: Path) -> bool:
     if not (d / "metrics.csv").exists():
         return False
     steps = json.loads((d / "config.json").read_text())["train"]["steps"]
-    return int(read_metrics(d)["step"][-1]) == steps
+    m = read_metrics(d)
+    return bool(m) and int(m["step"][-1]) == steps
 
 
 def train_missing(config: str, rungs: list[str], seeds=SEEDS, overrides=()):
@@ -113,6 +114,9 @@ def watch(config: str, rungs: list[str], seeds=SEEDS, overrides=(), refresh: flo
                     lines.append(f"  {label}  pending")
                     continue
                 m = read_metrics(d)
+                if not m:
+                    lines.append(f"> {label}  starting, first eval not done yet")
+                    continue
                 acc = " ".join(f"{k[4:]}:{m[k][-1]:.2f}" for k in m if k.startswith("acc_"))
                 if int(m["step"][-1]) == steps:
                     done += 1

@@ -23,4 +23,6 @@ def save(fig, name: str):
 def read_metrics(run_dir: str | Path) -> dict[str, np.ndarray]:
     with open(Path(run_dir) / "metrics.csv") as f:
         rows = list(csv.DictReader(f))
+    if not rows:
+        return {}
     return {k: np.array([float(r[k]) for r in rows]) for k in rows[0]}
