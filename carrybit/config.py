@@ -25,6 +25,8 @@ class ModularConfig:
 @dataclass
 class ArithmeticConfig:
     max_digits: int = 20
+    min_digits: int = 1
+    carry_heavy: float = 0.0  # fraction of training examples given a long run of columns summing to 9
     reverse: bool = True  # least significant digit first
     zero_pad: bool = False  # pad both operands to the same length, answer to one more
     positions: str = "sequential"  # sequential | abacus | coupled

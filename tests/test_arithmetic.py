@@ -163,3 +163,17 @@ def test_accuracy_is_one_for_an_oracle():
             return ex["tokens"][:, : prompt.shape[1] + n_new]
 
     assert task.accuracy(Oracle(), ex) == 1.0
+
+
+def test_carry_heavy_batches_contain_runs_of_nines():
+    task = make(carry_heavy=1.0)
+    a, b, la, lb = task.sample(64, 6)
+    b2 = task.add_carry_chains(a, b, torch.minimum(la, lb))
+    sums = a + b2
+    assert ((sums == 9).sum(1) >= 1).all()
+    # Digits past each operand's own length are untouched, so lengths are preserved.
+    idx = torch.arange(6)
+    assert (b2[idx >= lb[:, None]] == 0).all()
+    plain = make(min_digits=6)
+    _, _, la2, lb2 = plain.sample(32, 6, plain.cfg.min_digits)
+    assert (la2 == 6).all() and (lb2 == 6).all()

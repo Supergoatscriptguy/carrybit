@@ -176,9 +176,24 @@ class Arithmetic:
         }
 
     def train_batch(self, batch_size: int):
-        a, b, la, lb = self.sample(batch_size, self.cfg.max_digits)
+        a, b, la, lb = self.sample(batch_size, self.cfg.max_digits, self.cfg.min_digits)
+        if self.cfg.carry_heavy:
+            b = self.add_carry_chains(a, b, torch.minimum(la, lb))
         ex = self.build(a, b, la, lb, train=True)
         return ex["tokens"], ex["targets"], ex["positions"]
+
+    def add_carry_chains(self, a, b, shared_len):
+        """Rewrite b on a fraction of examples so that a random run of columns sums to
+        exactly 9, which is where carries have to ripple. Columns beyond the shorter
+        operand are left alone so the operand lengths are unchanged."""
+        B, D = a.shape
+        gen = self.gen
+        chosen = torch.rand(B, device=a.device, generator=gen) < self.cfg.carry_heavy
+        start = (torch.rand(B, device=a.device, generator=gen) * shared_len).long()
+        length = (torch.rand(B, device=a.device, generator=gen) * (shared_len - start)).long() + 1
+        col = torch.arange(D, device=a.device)
+        run = chosen[:, None] & (col >= start[:, None]) & (col < (start + length)[:, None]) & (col < shared_len[:, None])
+        return torch.where(run, 9 - a, b)
 
     @torch.no_grad()
     def accuracy(self, model, ex, chunk: int = 64) -> float:
