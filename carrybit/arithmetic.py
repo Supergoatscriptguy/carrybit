@@ -181,11 +181,14 @@ class Arithmetic:
         return ex["tokens"], ex["targets"], ex["positions"]
 
     @torch.no_grad()
-    def accuracy(self, model, ex) -> float:
+    def accuracy(self, model, ex, chunk: int = 64) -> float:
         p = ex["prompt_len"]
-        prompt = ex["tokens"][:, :p]
         n_new = ex["tokens"].shape[1] - p
-        out = model.generate(prompt, n_new, ex["positions"])[:, p:]
+        out = torch.cat([
+            model.generate(ex["tokens"][i : i + chunk, :p], n_new,
+                           None if ex["positions"] is None else ex["positions"][i : i + chunk])
+            for i in range(0, len(ex["tokens"]), chunk)
+        ])[:, p:]
         expected = ex["answer"][:, p:]
         if self.cfg.blanks:
             # Blanks in the answer are stripped before comparing, as in the paper.

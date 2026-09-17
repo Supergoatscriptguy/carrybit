@@ -2,8 +2,14 @@ import argparse
 import csv
 import json
 import math
+import os
 import time
 from pathlib import Path
+
+# Greedy decoding at eval time allocates hundreds of distinct tensor shapes. Without
+# expandable segments the caching allocator fragments badly, and on Windows the driver
+# then silently spills into system memory over PCIe instead of raising an error.
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import torch
 import torch.nn.functional as F
@@ -36,6 +42,8 @@ def train(cfg: Config, run_dir: Path, device="cuda"):
     (run_dir / "config.json").write_text(json.dumps(cfg.to_dict(), indent=2))
     torch.manual_seed(cfg.train.seed)
 
+    if device == "cuda":
+        torch.cuda.set_per_process_memory_fraction(0.85)
     task = make_task(cfg, device)
     model = Transformer(task.vocab_size, cfg.model).to(device)
     opt = torch.optim.AdamW(
@@ -60,8 +68,9 @@ def train(cfg: Config, run_dir: Path, device="cuda"):
             model.eval()
             with autocast:
                 metrics = task.evaluate(model)
-            row = {"step": step, "elapsed": round(time.time() - t0, 1), "loss": loss_ema, **metrics}
             model.train()
+            torch.cuda.empty_cache()
+            row = {"step": step, "elapsed": round(time.time() - t0, 1), "loss": loss_ema, **metrics}
             if writer is None:
                 writer = csv.DictWriter(metrics_file, fieldnames=list(row))
                 writer.writeheader()
