@@ -77,7 +77,8 @@ if __name__ == "__main__":
 
     use_style()
     fig, ax = plt.subplots(figsize=(6, 3.4))
-    labels = ["torch.add"] + [f"model, {n} digits" for n in DIGITS]
+    labels = ["torch.add"] + [f"model
+{n} digits" for n in DIGITS]
     rates = [hw] + [r[1] for r in rows]
     colors = ["0.5"] + [plt.rcParams["axes.prop_cycle"].by_key()["color"][0]] * len(DIGITS)
     bars = ax.bar(labels, rates, color=colors, width=0.7)
