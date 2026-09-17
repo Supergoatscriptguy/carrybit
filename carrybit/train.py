@@ -2,14 +2,8 @@ import argparse
 import csv
 import json
 import math
-import os
 import time
 from pathlib import Path
-
-# Greedy decoding at eval time allocates hundreds of distinct tensor shapes. Without
-# expandable segments the caching allocator fragments badly, and on Windows the driver
-# then silently spills into system memory over PCIe instead of raising an error.
-os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
 import torch
 import torch.nn.functional as F
@@ -43,6 +37,9 @@ def train(cfg: Config, run_dir: Path, device="cuda"):
     torch.manual_seed(cfg.train.seed)
 
     if device == "cuda":
+        # Greedy decoding at eval time allocates hundreds of distinct tensor shapes and the
+        # caching allocator fragments. On Windows the driver then silently spills into system
+        # memory over PCIe rather than failing, so cap the process and let the cache be freed.
         torch.cuda.set_per_process_memory_fraction(0.85)
     task = make_task(cfg, device)
     model = Transformer(task.vocab_size, cfg.model).to(device)
