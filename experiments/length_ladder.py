@@ -132,7 +132,7 @@ def watch(config: str, rungs: list[str], seeds=SEEDS, overrides=(), refresh: flo
                 lines.append(f"> {label}  [{bar:<30}] {est:>6}/{steps}  ~{remaining:.0f} min left")
                 lines.append(f"  {'':<27}{acc}")
         os.system("cls" if os.name == "nt" else "clear")
-        print(f"length ladder  {done}/{len(RUNGS) * len(SEEDS)} runs done  ({time.strftime('%H:%M:%S')})\n")
+        print(f"{cfg.name}  {done}/{len(rungs) * len(seeds)} runs done  ({time.strftime('%H:%M:%S')})\n")
         print("\n".join(lines))
         time.sleep(refresh)
 
