@@ -116,7 +116,11 @@ def carry_chain_curve(top=16, max_len=14):
         p = ex["prompt_len"]
         pred = teacher_forced_digit(ex["tokens"], ex["positions"], p + top)
         accs.append((pred == total[:, top]).float().mean().item())
-        # Corrupt c_{top-1} to the digit it would be without its incoming carry.
+        # Corrupt c_{top-1} to the digit it would be without its incoming carry. Only
+        # meaningful when that column sums to 9, so that both digits are consistent inputs.
+        if length == 0:
+            flips.append(float("nan"))
+            continue
         corrupted = ex["tokens"].clone()
         corrupted[:, p + top - 1] = (total[:, top - 1] - 1) % 10
         pred2 = teacher_forced_digit(corrupted, ex["positions"], p + top)

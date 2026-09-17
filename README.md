@@ -171,6 +171,38 @@ uv run python experiments/length_ladder.py --rungs "position coupling" --set tra
 uv run python experiments/generalization_over_training.py
 ```
 
+### Find the carry
+
+The namesake. Take the best small coupling model (the no-weight-decay seed
+above, 4 layers, 4 heads) and ask where the carry comes from when it predicts
+answer digit i. Three measurements:
+
+- Attention mass by source, averaged over answer positions: the same column
+  (a_i, b_i), the column below (a_{i-1}, b_{i-1}), the model's own previous
+  output digit c_{i-1}, delimiters, or other digits.
+- Teacher-forced accuracy on digit i when the carry feeding it originated k
+  columns below and rippled through k columns that sum to exactly 9.
+- A counterfactual: replace c_{i-1} in the prefix with the digit it would have
+  been without its incoming carry, and count how often the prediction for c_i
+  follows the corrupted digit.
+
+![find the carry](assets/figures/find_the_carry.png)
+
+It is a ripple carry, and the carry wire is the output stream. One head in
+layer 0 puts 91% of its attention on the same column: that is the digit adder.
+Heads in layers 2 and 3 attend to the previous output digit. The counterfactual
+shows why: whenever the column below sums to 9, so the carry into i depends on
+the carry into i-1, corrupting c_{i-1} flips the prediction for c_i 100% of the
+time, for chains of any length. The model reads its own last digit, compares it
+with a_{i-1} + b_{i-1}, and infers whether a carry came in. Because the
+recursion runs through autoregression rather than through depth, chain length
+costs nothing: accuracy is 100% out to 14-column chains. That is exactly a
+ripple-carry adder, one column per generated token.
+
+```
+uv run python experiments/find_the_carry.py
+```
+
 ## What I would try next
 
 - More seeds on the no-weight-decay coupling run. If most of them hold their
