@@ -98,8 +98,7 @@ def plot(config: str, rungs: list[str], seeds=SEEDS, overrides=()):
     axes[0, 0].text(cfg.task.max_digits + max_digits / 50, 0.45, f"trained up to {cfg.task.max_digits}", color="0.4", fontsize=8,
                     bbox=dict(facecolor="white", edgecolor="none", pad=1))
     fig.tight_layout()
-    suffix = cfg.name.partition("_")[2]
-    save(fig, "length_ladder" + (f"_{suffix}" if suffix else ""))
+    save(fig, "length_ladder" if cfg.name == "addition" else f"length_ladder_{cfg.name.removeprefix('addition_')}")
 
 
 def watch(config: str, rungs: list[str], seeds=SEEDS, overrides=(), refresh: float = 10.0):

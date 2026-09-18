@@ -188,8 +188,25 @@ about 1.7x to 2.5x: the better seed holds 97% at 50 digits and 75% at 60. Both
 abacus seeds generalized zero digits past their training length, worse than
 the best small abacus seed. Still nowhere near 200.
 
+Fixed blankspace got the same treatment, at the exact model size the paper
+uses (6 layers, width 384), trained on 1 to 20 digits with every number padded
+to 121 slots, two seeds:
+
+![scaled blankspace](assets/figures/length_ladder_blankspace_big.png)
+
+| | 20 | 30 | 40 | 50 | 60 |
+|---|---|---|---|---|---|
+| seed 0 | 1.00 | 0.95 | 0.63 | 0.20 | 0.01 |
+| seed 1 | 1.00 | 0.94 | 0.54 | 0.16 | 0.01 |
+
+Consistent across seeds, which is rare in this project, and a real improvement
+over the small model. But it lands in the same place as coupling: 2 to 2.5x,
+not 10x. The paper's 200-digit result needs its relative position embeddings,
+which I could not make work with my simpler relative bias.
+
 ```
 uv run python experiments/length_ladder.py --config configs/addition_big.yaml --rungs "abacus,position coupling" --seeds 0,1
+uv run python experiments/length_ladder.py --config configs/blankspace_big.yaml --rungs "blankspace fixed" --seeds 0,1
 ```
 
 ### Out-of-distribution accuracy is a transient
@@ -259,8 +276,6 @@ uv run python experiments/find_the_carry.py
 
 - More seeds on the no-weight-decay coupling run. If most of them hold their
   generalization, weight decay is the culprit and that is worth a proper study.
-- Fixed-width blankspace at the paper's model size, which is running as I write
-  this.
 - Shaw-style relative embeddings, to give the paper's headline combination a
   fair test.
 - A key-value cache for generation. Evaluating 200-digit problems without one is
