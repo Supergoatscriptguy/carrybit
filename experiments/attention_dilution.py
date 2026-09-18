@@ -34,6 +34,7 @@ EXAMPLES = 256
 def load(run_dir: Path):
     raw = json.loads((run_dir / "config.json").read_text())
     overrides = [f"task.{k}={json.dumps(v)}" for k, v in raw["task"].items() if k not in ("kind", "test_digits")]
+    overrides += [f"model.{k}={json.dumps(v)}" for k, v in raw["model"].items()]
     cfg = load_config("configs/addition.yaml", overrides + [f"task.test_digits={list(LENGTHS)}", f"task.test_examples={EXAMPLES}"])
     task = Arithmetic(cfg.task, 99, device)
     model = Transformer(16, cfg.model).to(device).eval()

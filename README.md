@@ -300,6 +300,53 @@ this is not.
 uv run python experiments/neural_alu.py
 ```
 
+### Sharpening attention at inference recovers lost generalization
+
+The three findings above suggested one mechanism. Coupling models fail past
+the training length gradually rather than all at once. The carry circuit is
+two sharp attention operations. And generalization erodes during training.
+If the digit-adder head's attention is spread over more same-position
+distractors as the sequence grows, softer attention would fail earlier, and
+sharpening it at inference, by multiplying the attention logits by a constant,
+would help. That needs no retraining, so it can be tested on every checkpoint
+already saved.
+
+![attention dilution](assets/figures/attention_dilution.png)
+
+Left: the adder head's attention mass on its own column drops with test length
+in every model, and the seeds whose mass collapses at 30 digits are the seeds
+whose accuracy collapses there. Middle: the same mass measured at 20 digits
+across training does not visibly soften, for either weight decay setting, so
+the mechanism behind the erosion is not simply "weight decay makes this head
+blurry". Right: the intervention, mean of three seeds. Per seed, at the final
+weight-decay checkpoints:
+
+| seed, logits scaled by | 30 digits | 40 | 50 | 60 |
+|---|---|---|---|---|
+| 0, x1.0 | 0.93 | 0.05 | 0 | 0 |
+| 0, x1.4 | 1.00 | 0.89 | 0.34 | 0.04 |
+| 1, x1.0 | 0 | 0 | 0 | 0 |
+| 1, x1.4 | 0.46 | 0 | 0 | 0 |
+| 2, any | 0 | 0 | 0 | 0 |
+
+Seed 0 had reached 63% on 40 digits at step 17k and eroded to 5% by the end.
+Scaling its attention logits by 1.4 at inference brings it to 89%, with
+in-distribution accuracy untouched. Seed 1 never generalized to 40 but goes
+from 0 to 46% at 30. Seed 2 never generalized at all and gains nothing. The
+no-weight-decay seed that kept its generalization also gains, from 49% to 70%
+at 50 digits. So the knob restores a circuit the model already has; it does
+not create one. Past about x1.5 in-distribution accuracy starts to fall, and
+x2.0 breaks everything.
+
+I have not seen this reported. It is a small thing, one scalar at inference,
+but it means that some of what looks like a model losing length generalization
+during training is the model keeping the algorithm and losing the attention
+contrast needed to run it at longer lengths.
+
+```
+uv run python experiments/attention_dilution.py
+```
+
 ## What I would try next
 
 - More seeds on the no-weight-decay coupling run. If most of them hold their
