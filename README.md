@@ -437,6 +437,11 @@ uv run python experiments/length_ladder.py --rungs "position coupling,blankspace
   work better.
 - Find out what the sharpening does head by head. It multiplies every head's
   logits; the digit-adder head probably wants it and some heads probably do not.
+- Work out what separates the seed that sharpens to 200 digits from the one
+  that stops at 60. Both are 100% in distribution; something in the circuit
+  differs, and the carry experiment's tools should be able to find it.
+- The same knob on the abacus and blankspace models, and on the erosion
+  checkpoints of the small runs, to see how general the recovery is.
 - Shaw-style relative embeddings, to give the paper's headline combination a
   fair test.
 - A key-value cache for generation. Evaluating 200-digit problems without one is
