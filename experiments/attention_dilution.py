@@ -24,6 +24,7 @@ from carrybit.plotting import read_metrics, save, use_style
 from carrybit.tokenizer import PAD
 
 device = "cuda"
+torch.cuda.set_per_process_memory_fraction(0.85)  # see train.py
 RUNS = {"weight decay 0.1": "runs/addition/position_coupling_s{}", "no weight decay": "runs/addition_no_wd/position_coupling_s{}"}
 SEEDS = (0, 1, 2)
 LENGTHS = (10, 20, 30, 40, 50, 60)

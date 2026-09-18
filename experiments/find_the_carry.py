@@ -26,6 +26,7 @@ from carrybit.plotting import save, use_style
 
 run_dir = Path(sys.argv[1] if len(sys.argv) > 1 else "runs/addition_no_wd/position_coupling_s0")
 device = "cuda"
+torch.cuda.set_per_process_memory_fraction(0.85)  # see train.py
 N = 20
 BATCH = 512
 

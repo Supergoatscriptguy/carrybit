@@ -23,6 +23,7 @@ from carrybit.tokenizer import PAD
 
 run_dir = Path(sys.argv[1] if len(sys.argv) > 1 else "runs/addition_no_wd/position_coupling_s0")
 device = "cuda"
+torch.cuda.set_per_process_memory_fraction(0.85)  # see train.py
 DIGITS = (5, 10, 20, 40)
 BATCH = 2048
 
