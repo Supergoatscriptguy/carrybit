@@ -12,6 +12,21 @@ an excuse to study how small models learn algorithms it turned out to be a good
 one. Everything here runs on one consumer GPU in minutes to an hour, and the
 models top out at a few million parameters.
 
+The short version of what came out of it:
+
+- The known length generalization tricks (reversed digits, abacus embeddings,
+  position coupling, aligned blankspace) reproduce, but on this budget none of
+  them gets past about 2.5x the training length, and seed variance dominates.
+- Out-of-distribution accuracy peaks early in training and erodes while
+  in-distribution accuracy stays perfect, in a lot of runs.
+- The erosion is mostly lost attention contrast, not a lost algorithm.
+  Multiplying the attention logits by a constant at inference, with nothing
+  retrained, takes an 11M parameter model trained on 30-digit addition from 0%
+  to 100% exact match at 200 digits. One seed of two; the other stops at 60.
+- Grokking on modular addition sharpens Fourier structure that is already in
+  the weights, in a transformer as well as in the MLP the claim was made for.
+- The carry is a ripple carry, and the carry wire is the model's own output.
+
 ## Setup
 
 You need Python 3.12+, [uv](https://docs.astral.sh/uv/), and an NVIDIA GPU. The
@@ -314,13 +329,34 @@ at 50 digits. So the knob restores a circuit the model already has; it does
 not create one. Past about x1.5 in-distribution accuracy starts to fall, and
 x2.0 breaks everything.
 
+Then the same knob on the 11M coupling models from the scaling section,
+trained on up to 30 digits, tested out to 200 on 128 problems per length:
+
+![sharpening sweep](assets/figures/sharpening_sweep.png)
+
+| seed 1, logits scaled by | 60 | 80 | 100 | 120 | 150 | 200 |
+|---|---|---|---|---|---|---|
+| x1.0 | 0.69 | 0 | 0 | 0 | 0 | 0 |
+| x1.4 | 1.00 | 1.00 | 0.99 | 0.93 | 0.48 | 0 |
+| x1.6 | 1.00 | 1.00 | 1.00 | 1.00 | 0.97 | 0.59 |
+| x2.0 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 | 1.00 |
+
+That is 100% exact match at 6.7x the training length, from a model that
+scored zero at 2.7x, by multiplying one tensor by two. In-distribution
+accuracy is untouched at x2.0 and starts to slip at x2.5. Seed 0 tells the
+other half of the story: it gains at 60 digits (0 to 79% at x1.4) and nothing
+beyond 100 at any scale, and strong scaling breaks it. The knob amplifies the
+circuit that is there. In seed 1 that circuit was already the full algorithm
+and only needed its attention sharpened; in seed 0 it never was.
+
 I have not seen this reported. It is a small thing, one scalar at inference,
-but it means that some of what looks like a model losing length generalization
-during training is the model keeping the algorithm and losing the attention
-contrast needed to run it at longer lengths.
+but it means that some of what looks like a model losing length generalization,
+during training or past its training length, is the model keeping the
+algorithm and losing the attention contrast needed to run it.
 
 ```
 uv run python experiments/attention_dilution.py
+uv run python experiments/sharpening_sweep.py
 ```
 
 ### The neural ALU, measured
