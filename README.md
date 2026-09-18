@@ -272,6 +272,34 @@ ripple-carry adder, one column per generated token.
 uv run python experiments/find_the_carry.py
 ```
 
+### The neural ALU, measured
+
+The original joke, taken seriously for one afternoon. Load the carry model
+above, batch 2048 addition problems, decode the answers greedily, and count
+additions per second against the GPU adding 16 million integers natively.
+
+![neural ALU](assets/figures/neural_alu.png)
+
+| | adds per second | exact match | hardware adds per model add |
+|---|---|---|---|
+| torch.add | 3.0e10 | 1.000 | 1 |
+| model, 5 digits | 44,700 | 1.000 | 670,000 |
+| model, 10 digits | 15,800 | 1.000 | 1.9 million |
+| model, 20 digits | 4,600 | 1.000 | 6.5 million |
+| model, 40 digits | 1,170 | 0.924 | 26 million |
+
+So a 20-digit addition costs about six and a half million hardware additions,
+and roughly 8 billion floating point operations, to produce one exact result.
+The cost grows quadratically with digit count because generation has no
+key-value cache, so every output token reruns the whole prefix. A cache would
+buy maybe an order of magnitude. The gap would still be six zeros wide, and the
+answers would still start going wrong past the training length. Virtual cores
+this is not.
+
+```
+uv run python experiments/neural_alu.py
+```
+
 ## What I would try next
 
 - More seeds on the no-weight-decay coupling run. If most of them hold their
