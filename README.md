@@ -219,24 +219,28 @@ at 63% on 40 digits at step 17k and 11% at the end.
 
 ![generalization over training](assets/figures/generalization_over_training.png)
 
-Two ablations on the small coupling model, three seeds each:
+Two ablations on the small coupling model, then more seeds of everything:
 
 - **Constant learning rate** instead of cosine decay: the erosion gets worse,
   not better. Seed 0 peaked at 71% on 40 digits and ended at 2%. So the decay
   to zero is not the cause; if anything it freezes the model wherever it lands.
-- **No weight decay**: the one seed that generalized climbed monotonically to
-  92% at 40 digits and never eroded. The other two seeds never generalized.
+- **No weight decay**, six seeds against six seeds of the default: two of six
+  generalize in both settings, so weight decay does not decide who wins the
+  seed lottery. Among the winners, the no-weight-decay seeds climbed
+  monotonically and kept what they found (98% and 89% at 30 digits at the
+  end), while the default seeds were mixed: one eroded from 63% to 11% at 40
+  digits, another held steady at 39% at 30.
 
-So with weight decay, every run that found a generalizing solution later drifted
-away from it. Without weight decay, the one run that found it kept it. That is
-one seed, so treat it as a lead rather than a result. But the practical
-consequence holds regardless: papers reporting the final checkpoint and papers
-reporting the best checkpoint are measuring different things, and the gap here
-is large.
+So the erosion is real but not universal, and weight decay is a suspect
+rather than a verdict. What is solid is the practical point: papers reporting
+the final checkpoint and papers reporting the best checkpoint are measuring
+different things, and the gap here can be 50 points. The sharpening section
+below says what the erosion actually is.
 
 ```
 uv run python experiments/length_ladder.py --rungs "position coupling" --set train.cosine=false --name addition_constant_lr
-uv run python experiments/length_ladder.py --rungs "position coupling" --set train.weight_decay=0 --name addition_no_wd
+uv run python experiments/length_ladder.py --rungs "position coupling" --seeds 0,1,2,3,4,5
+uv run python experiments/length_ladder.py --rungs "position coupling" --seeds 0,1,2,3,4,5 --set train.weight_decay=0 --name addition_no_wd
 uv run python experiments/generalization_over_training.py
 ```
 
@@ -270,34 +274,6 @@ ripple-carry adder, one column per generated token.
 
 ```
 uv run python experiments/find_the_carry.py
-```
-
-### The neural ALU, measured
-
-The original joke, taken seriously for one afternoon. Load the carry model
-above, batch 2048 addition problems, decode the answers greedily, and count
-additions per second against the GPU adding 16 million integers natively.
-
-![neural ALU](assets/figures/neural_alu.png)
-
-| | adds per second | exact match | hardware adds per model add |
-|---|---|---|---|
-| torch.add | 3.0e10 | 1.000 | 1 |
-| model, 5 digits | 44,700 | 1.000 | 670,000 |
-| model, 10 digits | 15,800 | 1.000 | 1.9 million |
-| model, 20 digits | 4,600 | 1.000 | 6.5 million |
-| model, 40 digits | 1,170 | 0.924 | 26 million |
-
-So a 20-digit addition costs about six and a half million hardware additions,
-and roughly 8 billion floating point operations, to produce one exact result.
-The cost grows quadratically with digit count because generation has no
-key-value cache, so every output token reruns the whole prefix. A cache would
-buy maybe an order of magnitude. The gap would still be six zeros wide, and the
-answers would still start going wrong past the training length. Virtual cores
-this is not.
-
-```
-uv run python experiments/neural_alu.py
 ```
 
 ### Sharpening attention at inference recovers lost generalization
@@ -347,10 +323,84 @@ contrast needed to run it at longer lengths.
 uv run python experiments/attention_dilution.py
 ```
 
+### The neural ALU, measured
+
+The original joke, taken seriously for one afternoon. Load the carry model
+above, batch 2048 addition problems, decode the answers greedily, and count
+additions per second against the GPU adding 16 million integers natively.
+
+![neural ALU](assets/figures/neural_alu.png)
+
+| | adds per second | exact match | hardware adds per model add |
+|---|---|---|---|
+| torch.add | 3.0e10 | 1.000 | 1 |
+| model, 5 digits | 44,700 | 1.000 | 670,000 |
+| model, 10 digits | 15,800 | 1.000 | 1.9 million |
+| model, 20 digits | 4,600 | 1.000 | 6.5 million |
+| model, 40 digits | 1,170 | 0.924 | 26 million |
+
+So a 20-digit addition costs about six and a half million hardware additions,
+and roughly 8 billion floating point operations, to produce one exact result.
+The cost grows quadratically with digit count because generation has no
+key-value cache, so every output token reruns the whole prefix. A cache would
+buy maybe an order of magnitude. The gap would still be six zeros wide, and the
+answers would still start going wrong past the training length. Virtual cores
+this is not.
+
+```
+uv run python experiments/neural_alu.py
+```
+
+### Data mixes do not substitute for position tricks
+
+Two changes to the training data on the small coupling model, three seeds
+each, to see whether data alone moves length generalization as much as the
+position schemes do:
+
+- **Carry-heavy**: half of all training examples get a random run of columns
+  that sum to exactly 9, so carries have to ripple through them. Result: the
+  same seed lottery. The best seed reaches 43% at 40 digits, about where the
+  best default seed lands, and the other two do worse.
+- **Fixed length**: train only on 20-digit operands, as in the blankspace
+  paper's 10+10 experiment. Result: complete failure in both directions. The
+  model gets 20 digits right and nothing else, not even 5-digit problems.
+  Whatever coupling learns from a spread of lengths, it does not learn it from
+  one length.
+
+![fixed length](assets/figures/length_ladder_fixed_length.png)
+
+```
+uv run python experiments/length_ladder.py --rungs "position coupling" --set task.carry_heavy=0.5 --name addition_carry_heavy
+uv run python experiments/length_ladder.py --rungs "position coupling" --set task.min_digits=20 --name addition_fixed_length
+```
+
+### Subtraction
+
+The two best small-model formats on a - b, with the operands swapped so the
+answer is never negative. Borrows instead of carries, otherwise the same
+setup.
+
+![subtraction](assets/figures/length_ladder_subtraction.png)
+
+Fixed blankspace transfers: 87 to 96% at 30 digits, and the best seed holds
+79% at 40, which is a little better than it did on addition. Position
+coupling did not generalize past 20 on any of three seeds. Given that only two
+of six coupling seeds generalize on addition, three failures is consistent
+with bad luck, but it is also consistent with borrows being harder for that
+circuit, and I cannot tell which from here.
+
+```
+uv run python experiments/length_ladder.py --rungs "position coupling,blankspace fixed" --set task.op=sub --name subtraction
+```
+
 ## What I would try next
 
-- More seeds on the no-weight-decay coupling run. If most of them hold their
-  generalization, weight decay is the culprit and that is worth a proper study.
+- Sharpen attention during training rather than after it: a temperature on the
+  logits, or a penalty on attention entropy, and see whether the erosion goes
+  away. If the inference knob works this well, the training-time version should
+  work better.
+- Find out what the sharpening does head by head. It multiplies every head's
+  logits; the digit-adder head probably wants it and some heads probably do not.
 - Shaw-style relative embeddings, to give the paper's headline combination a
   fair test.
 - A key-value cache for generation. Evaluating 200-digit problems without one is
