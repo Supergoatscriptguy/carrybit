@@ -57,8 +57,10 @@ def evaluate(run_dir: Path, config: str, lengths):
     model.load_state_dict(torch.load(last, map_location=device))
     results = {}
     for scale in SCALES:
+        # Relative to whatever scale the model was trained with, which is 1 unless the run
+        # used model.attn_scale.
         for block in model.blocks:
-            block.attn.scale = scale
+            block.attn.scale = cfg.model.attn_scale * scale
         results[scale] = [task.accuracy(model, task.test_sets[n]) for n in lengths]
         torch.cuda.empty_cache()
         print(f"{run_dir} x{scale}: " + " ".join(f"{n}:{a:.2f}" for n, a in zip(lengths, results[scale])), flush=True)
