@@ -72,6 +72,9 @@ class Config:
 
 
 def _build(cls, values: dict):
+    # Runs saved before pos_embed existed stored positional: true, which is the default now.
+    if cls is ModelConfig:
+        values.pop("positional", None)
     kwargs = {}
     for f in fields(cls):
         if f.name not in values:
