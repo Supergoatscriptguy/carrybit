@@ -11,16 +11,19 @@ import matplotlib.pyplot as plt
 from carrybit.plotting import read_metrics, save, use_style
 
 PANELS = [
-    ("position coupling, weight decay 0.1", "runs/addition/position_coupling_s{}", (0, 1, 2), 40),
+    ("position coupling, weight decay 0.1", "runs/addition/position_coupling_s{}", (0, 1, 2, 3, 4, 5), 40),
     ("same, constant learning rate", "runs/addition_constant_lr/position_coupling_s{}", (0, 1, 2), 40),
-    ("same, no weight decay", "runs/addition_no_wd/position_coupling_s{}", (0, 1, 2), 40),
-    ("11M params, trained to 30 digits", "runs/addition_big/position_coupling_s{}", (0, 1), 60),
+    ("same, no weight decay", "runs/addition_no_wd/position_coupling_s{}", (0, 1, 2, 3, 4, 5), 40),
+    ("same, attention logits x2 during training", "runs/addition_sharp/position_coupling_s{}", (0, 1, 2), 40),
+    ("11M params, trained to 30 digits", "runs/addition_big/position_coupling_s{}", (0, 1, 2, 3), 60),
+    ("11M, attention logits x2 during training", "runs/addition_big_sharp/position_coupling_s{}", (0, 1), 60),
 ]
 
 use_style()
-fig, axes = plt.subplots(2, 2, figsize=(8, 5), sharex=True, sharey=True)
+fig, axes = plt.subplots(2, 3, figsize=(11, 5), sharex=True, sharey=True)
 palette = plt.rcParams["axes.prop_cycle"].by_key()["color"]
-for ax, color, (title, pattern, seeds, digits) in zip(axes.flat, palette, PANELS):
+for i, (ax, (title, pattern, seeds, digits)) in enumerate(zip(axes.flat, PANELS)):
+    color = palette[i % len(palette)]
     for seed in seeds:
         run = Path(pattern.format(seed))
         if not run.exists():

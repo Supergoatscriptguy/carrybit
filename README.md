@@ -22,7 +22,8 @@ The short version of what came out of it:
 - The erosion is mostly lost attention contrast, not a lost algorithm.
   Multiplying the attention logits by a constant at inference, with nothing
   retrained, takes an 11M parameter model trained on 30-digit addition from 0%
-  to 100% exact match at 200 digits. One seed of two; the other stops at 60.
+  to 100% exact match at 200 digits. One seed of four; the other three gain at
+  60 digits and stop there.
 - Grokking on modular addition sharpens Fourier structure that is already in
   the weights, in a transformer as well as in the MLP the claim was made for.
 - The carry is a ripple carry, and the carry wire is the model's own output.
@@ -199,7 +200,8 @@ width 384), trained on 1 to 30 digits for 60k steps and tested to 200.
 ![scaled ladder](assets/figures/length_ladder_big.png)
 
 Scale helped position coupling and did nothing for abacus. Coupling went from
-about 1.7x to 2.5x: the better seed holds 97% at 50 digits and 75% at 60. Both
+about 1.7x to 2.5x: the best of four seeds holds 97% at 50 digits and 75% at
+60, the other three land between 28% and 51% at 50 and near zero at 60. Both
 abacus seeds generalized zero digits past their training length, worse than
 the best small abacus seed. Still nowhere near 200.
 
@@ -220,7 +222,8 @@ not 10x. The paper's 200-digit result needs its relative position embeddings,
 which I could not make work with my simpler relative bias.
 
 ```
-uv run python experiments/length_ladder.py --config configs/addition_big.yaml --rungs "abacus,position coupling" --seeds 0,1
+uv run python experiments/length_ladder.py --config configs/addition_big.yaml --rungs "abacus" --seeds 0,1
+uv run python experiments/length_ladder.py --config configs/addition_big.yaml --rungs "position coupling" --seeds 0,1,2,3
 uv run python experiments/length_ladder.py --config configs/blankspace_big.yaml --rungs "blankspace fixed" --seeds 0,1
 ```
 
@@ -246,8 +249,16 @@ Two ablations on the small coupling model, then more seeds of everything:
   end), while the default seeds were mixed: one eroded from 63% to 11% at 40
   digits, another held steady at 39% at 30.
 
-So the erosion is real but not universal, and weight decay is a suspect
-rather than a verdict. What is solid is the practical point: papers reporting
+- **Attention logits scaled by 2 throughout training** (bottom left and
+  bottom right of the figure), the training-time version of the inference knob described two
+  sections down: all three small seeds reach 85 to 100% at 30 digits, where
+  two of six ordinary seeds do, so it makes the circuit more likely to form.
+  It does not stop the erosion. The best small seed peaked at 91% on 40 digits
+  and finished at 28%; one 11M seed peaked at 92% on 60 digits and finished
+  at 4%.
+
+So the erosion is real but not universal, and neither the schedule, weight
+decay, nor a constant attention temperature explains it. What is solid is the practical point: papers reporting
 the final checkpoint and papers reporting the best checkpoint are measuring
 different things, and the gap here can be 50 points. The sharpening section
 below says what the erosion actually is.
@@ -256,6 +267,8 @@ below says what the erosion actually is.
 uv run python experiments/length_ladder.py --rungs "position coupling" --set train.cosine=false --name addition_constant_lr
 uv run python experiments/length_ladder.py --rungs "position coupling" --seeds 0,1,2,3,4,5
 uv run python experiments/length_ladder.py --rungs "position coupling" --seeds 0,1,2,3,4,5 --set train.weight_decay=0 --name addition_no_wd
+uv run python experiments/length_ladder.py --rungs "position coupling" --set model.attn_scale=2.0 --name addition_sharp
+uv run python experiments/length_ladder.py --config configs/addition_big.yaml --rungs "position coupling" --seeds 0,1 --set model.attn_scale=2.0 --name addition_big_sharp
 uv run python experiments/generalization_over_training.py
 ```
 
@@ -343,11 +356,12 @@ trained on up to 30 digits, tested out to 200 on 128 problems per length:
 
 That is 100% exact match at 6.7x the training length, from a model that
 scored zero at 2.7x, by multiplying one tensor by two. In-distribution
-accuracy is untouched at x2.0 and starts to slip at x2.5. Seed 0 tells the
-other half of the story: it gains at 60 digits (0 to 79% at x1.4) and nothing
-beyond 100 at any scale, and strong scaling breaks it. The knob amplifies the
-circuit that is there. In seed 1 that circuit was already the full algorithm
-and only needed its attention sharpened; in seed 0 it never was.
+accuracy is untouched at x2.0 and starts to slip at x2.5. The other three
+seeds tell the other half of the story: each gains at 60 digits (0 to 84%,
+71% and 65%), none gains beyond 100 at any scale, and strong scaling breaks
+them. The knob amplifies the circuit that is there. In seed 1 that circuit was
+already the full algorithm and only needed its attention sharpened; in the
+others it never was.
 
 How general is it? The same sweep on every run in this README, at 2x and 3x
 each run's training length, as trained versus at its best scale:
@@ -464,17 +478,14 @@ uv run python experiments/length_ladder.py --rungs "position coupling,blankspace
 
 ## What I would try next
 
-- Sharpen attention during training rather than after it: a temperature on the
-  logits, or a penalty on attention entropy, and see whether the erosion goes
-  away. If the inference knob works this well, the training-time version should
-  work better.
-- Find out what the sharpening does head by head. It multiplies every head's
-  logits; the digit-adder head probably wants it and some heads probably do not.
-- Work out what separates the seed that sharpens to 200 digits from the one
-  that stops at 60. Both are 100% in distribution; something in the circuit
-  differs, and the carry experiment's tools should be able to find it.
-- The same knob on the abacus and blankspace models, and on the erosion
-  checkpoints of the small runs, to see how general the recovery is.
+- Explain the erosion. It survives a constant learning rate, a constant
+  attention temperature, and sometimes the removal of weight decay, and the
+  first-layer sharpness that the knob restores does not visibly soften at the
+  training length. Something else in the circuit degrades, and the carry
+  experiment's tools should be able to find it.
+- Work out what separates the seed that sharpens to 200 digits from the three
+  that stop at 60. All four are 100% in distribution.
+- A length-dependent or learned sharpening factor instead of one constant.
 - Shaw-style relative embeddings, to give the paper's headline combination a
   fair test.
 - A key-value cache for generation. Evaluating 200-digit problems without one is

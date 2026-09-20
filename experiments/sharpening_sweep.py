@@ -29,10 +29,12 @@ SMALL = (20, 30, 40, 50, 60, 80, 100)
 BIG = (30, 40, 60, 80, 100, 120, 150, 200)
 RUNS = [
     ("11M coupling", "configs/addition_big.yaml", "runs/addition_big/position_coupling_s{}", (0, 1, 2, 3), BIG),
+    ("11M coupling, trained x2", "configs/addition_big.yaml", "runs/addition_big_sharp/position_coupling_s{}", (0, 1), BIG),
     ("11M abacus", "configs/addition_big.yaml", "runs/addition_big/abacus_s{}", (0, 1), BIG),
     ("11M blankspace fixed", "configs/blankspace_big.yaml", "runs/blankspace_big/blankspace_fixed_s{}", (0, 1), SMALL),
     ("3M coupling", "configs/addition.yaml", "runs/addition/position_coupling_s{}", (0, 1, 2, 3, 4, 5), SMALL),
     ("3M coupling, no wd", "configs/addition.yaml", "runs/addition_no_wd/position_coupling_s{}", (0, 1, 2, 3, 4, 5), SMALL),
+    ("3M coupling, trained x2", "configs/addition.yaml", "runs/addition_sharp/position_coupling_s{}", (0, 1, 2), SMALL),
     ("3M abacus", "configs/addition.yaml", "runs/addition/abacus_s{}", (0, 1, 2), SMALL),
     ("3M blankspace fixed", "configs/addition.yaml", "runs/addition/blankspace_fixed_s{}", (0, 1, 2), SMALL),
 ]
