@@ -13,6 +13,7 @@ class ModelConfig:
     d_mlp: int = 512
     max_positions: int = 128
     pos_embed: str = "absolute"  # absolute | relative | none
+    attn_scale: float = 1.0  # multiplies attention logits in every head, during training too
     dropout: float = 0.0
 
 

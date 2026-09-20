@@ -18,15 +18,18 @@ class Attention(nn.Module):
         # Set record=True to keep the last attention pattern around for inspection.
         self.record = False
         self.pattern = None
-        # Multiplies the attention logits at inference. 1.0 is the trained model; larger
-        # values sharpen every head, which the attention dilution experiment uses.
-        self.scale = 1.0
+        # Multiplies the attention logits. A float applies to every head, a tensor of shape
+        # (n_heads,) per head. Set from the config for training, or at inference to sharpen
+        # a trained model, which the attention dilution experiments do.
+        self.scale = cfg.attn_scale
 
     def forward(self, x):
         B, T, D = x.shape
         q, k, v = self.qkv(x).view(B, T, 3, self.n_heads, D // self.n_heads).unbind(2)
         q, k, v = (t.transpose(1, 2) for t in (q, k, v))
-        if self.scale != 1.0:
+        if torch.is_tensor(self.scale):
+            q = q * self.scale.to(q.dtype).view(1, -1, 1, 1)
+        elif self.scale != 1.0:
             q = q * self.scale
         causal = torch.ones(T, T, dtype=torch.bool, device=x.device).tril()
         bias = None
