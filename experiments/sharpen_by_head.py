@@ -91,10 +91,9 @@ if __name__ == "__main__":
             for color, n in zip(colors, LENGTHS):
                 ax.plot(labels, [rows[k][LENGTHS.index(n)] for k in keys], color=color, marker="o", ms=3,
                         label=f"{n} digits" if seed == 1 else None, **style)
-            ax.set(title=title, ylim=(-0.03, 1.03))
+            ax.set(ylim=(-0.03, 1.03))
             ax.set_title(title, loc="left", fontsize=9.5)
-        for seed_, rows_ in ((seed, rows),):
-            print(f"seed {seed_} layer 0 heads at {LENGTHS[0]} digits: " + " ".join(f"H{h}:{rows_[f'L0H{h}'][0]:.2f}" for h in range(H)))
+        print(f"seed {seed} layer 0 heads at {LENGTHS[0]} digits: " + " ".join(f"H{h}:{rows[f'L0H{h}'][0]:.2f}" for h in range(H)))
     axes[0].set(xlabel="layer", ylabel="exact match")
     axes[1].set(xlabel="k")
     axes[2].set(xlabel="layer left unscaled")

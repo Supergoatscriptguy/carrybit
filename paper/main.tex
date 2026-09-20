@@ -146,7 +146,14 @@ seed 1, logits $\times$ & 60 & 80 & 100 & 120 & 150 & 200 \\
 \label{fig:reach}
 \end{figure}
 
-% TODO: layer sweep paragraph (sharpen_by_head.png) once the queued evaluation finishes.
+\paragraph{Where the sharpening acts.} Scaling every head is crude, so Figure~\ref{fig:layers} scales subsets. On the seed that reaches 200 digits, sharpening layer 0 alone reproduces the full effect (100\% at 100 digits, 98\% at 150), sharpening the first two layers is indistinguishable from sharpening all six, and sharpening every layer except layer 0 recovers nothing past the training length. Within layer 0, no single head suffices, and scaling some heads alone (H0, H3, H5) breaks the model at 60 digits, so what is being sharpened is the joint attention pattern of the first layer rather than one head. This is the layer in which the small model's digit-adder head lives (Section~\ref{sec:carry}), and it is consistent with the dilution account: the first layer is where the two operand digits of the current column are gathered from among all the tokens that share their position id, and that is the lookup that a longer sequence dilutes. On the seed that stops at 60 digits, no subset helps, as before.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{sharpen_by_head.png}
+\caption{Exact match past the training length for the 11M position-coupling models when the attention logits are scaled by 2 in a subset of layers. Left: one layer at a time. Middle: the first $k$ layers; $k=0$ is the trained model and $k=6$ is every layer. Right: every layer except one. Bold: the seed that reaches 200 digits with all layers scaled. Faint: the seed that does not.}
+\label{fig:layers}
+\end{figure}
 % TODO: results of training with a fixed attention scale (addition_sharp, addition_big_sharp).
 
 \section{Related work}

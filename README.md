@@ -363,6 +363,22 @@ scale, and the small blankspace models do not move. So the knob is not free
 accuracy; it is a way of reading out a circuit that training produced but
 left too soft to use.
 
+Where does the sharpening act? Scaling subsets of layers on the two 11M
+models:
+
+![sharpen by layer](assets/figures/sharpen_by_head.png)
+
+On the seed that reaches 200 digits, layer 0 alone does the whole job: 100%
+at 100 digits, 98% at 150. Scaling the first two layers is indistinguishable
+from scaling all six, and scaling every layer except layer 0 recovers nothing.
+Inside layer 0 no single head suffices, and scaling some heads on their own
+breaks the model, so it is the joint pattern of the first layer's heads that
+needs contrast, not one head. That is the layer where the small model's
+digit-adder head lives, and it is the lookup a longer sequence dilutes: the
+two digits of the current column have to be picked out from among every token
+that shares their position id. On the seed that stops at 60 digits, no subset
+helps.
+
 Scaling the logits at inference is not itself new. Chiang and Cholak (2022)
 scale by the log of the sequence length and show it is needed for attention
 to represent some formal languages at all lengths; YaRN applies a temperature
