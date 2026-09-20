@@ -67,11 +67,6 @@ def evaluate(run_dir: Path, config: str, lengths):
     return results
 
 
-def reach(acc, lengths, train_len, threshold=0.9):
-    ok = [n for n, a in zip(lengths, acc) if a >= threshold]
-    return max(ok) if ok else train_len
-
-
 def curve_figure(results_by_seed, lengths):
     fig, ax = plt.subplots(figsize=(6.5, 3.8))
     colors = plt.rcParams["axes.prop_cycle"].by_key()["color"] + ["0.4"]
@@ -92,21 +87,25 @@ def curve_figure(results_by_seed, lengths):
 
 
 def reach_figure(rows):
-    fig, ax = plt.subplots(figsize=(6.5, 0.28 * len(rows) + 1.2))
+    """rows: (label, {multiple: (before, after, best_scale)}) for multiples 2 and 3 of the
+    training length. Exact match as trained versus at the best inference scale."""
+    fig, axes = plt.subplots(1, 2, figsize=(8, 0.26 * len(rows) + 1.2), sharey=True)
     color = plt.rcParams["axes.prop_cycle"].by_key()["color"][0]
-    for y, (label, before, after, best_scale) in enumerate(rows):
-        ax.plot([before, after], [y, y], color="0.75", lw=1, zorder=1)
-        ax.plot(before, y, marker="o", mfc="white", mec="0.4", ms=5, zorder=2)
-        ax.plot(after, y, marker="o", color=color, ms=5, zorder=3)
-        if after > before:
-            ax.text(after + 3, y, f"x{best_scale:g}", va="center", fontsize=7, color="0.4")
-    ax.set(yticks=range(len(rows)), yticklabels=[r[0] for r in rows], xlabel="longest length with at least 90% exact match",
-           xlim=(0, 215), ylim=(-0.7, len(rows) - 0.3))
-    ax.invert_yaxis()
-    ax.tick_params(axis="y", length=0, labelsize=8)
-    ax.plot([], [], marker="o", mfc="white", mec="0.4", ls="none", label="as trained")
-    ax.plot([], [], marker="o", color=color, ls="none", label="best inference scale")
-    ax.legend(fontsize=8, loc="lower right")
+    for ax, multiple in zip(axes, (2, 3)):
+        for y, (label, at) in enumerate(rows):
+            before, after, best_scale = at[multiple]
+            ax.plot([before, after], [y, y], color="0.75", lw=1, zorder=1)
+            ax.plot(before, y, marker="o", mfc="white", mec="0.4", ms=5, zorder=2)
+            ax.plot(after, y, marker="o", color=color, ms=5, zorder=3)
+            if after - before >= 0.05:
+                ax.text(after + 0.03, y, f"x{best_scale:g}", va="center", fontsize=7, color="0.4")
+        ax.set(xlim=(-0.03, 1.15), xticks=(0, 0.5, 1), xlabel=f"exact match at {multiple}x the training length")
+    axes[0].set(yticks=range(len(rows)), yticklabels=[r[0] for r in rows], ylim=(-0.7, len(rows) - 0.3))
+    axes[0].invert_yaxis()
+    axes[0].tick_params(axis="y", length=0, labelsize=8)
+    axes[1].plot([], [], marker="o", mfc="white", mec="0.4", ls="none", label="as trained")
+    axes[1].plot([], [], marker="o", color=color, ls="none", label="best inference scale")
+    axes[1].legend(fontsize=8, loc="lower right")
     fig.tight_layout()
     save(fig, "sharpening_reach")
 
@@ -124,10 +123,13 @@ if __name__ == "__main__":
             results = evaluate(run_dir, config, lengths)
             if label == "11M coupling":
                 coupling_curves[seed] = results
-            before = reach(results[1.0], lengths, train_len)
-            best_scale = max(results, key=lambda s: (reach(results[s], lengths, train_len), -s))
-            rows.append((f"{label} s{seed}", before, reach(results[best_scale], lengths, train_len), best_scale))
-    for row in rows:
-        print(f"{row[0]:28s} reach {row[1]:4d} -> {row[2]:4d} at x{row[3]:g}")
+            at = {}
+            for multiple in (2, 3):
+                n = min(lengths, key=lambda l: abs(l - multiple * train_len))
+                i = lengths.index(n)
+                best_scale = max(results, key=lambda s: (results[s][i], -s))
+                at[multiple] = (results[1.0][i], results[best_scale][i], best_scale)
+            rows.append((f"{label} s{seed}", at))
+            print(f"{label} s{seed:<3} " + "  ".join(f"{m}x: {b:.2f} -> {a:.2f} (x{s:g})" for m, (b, a, s) in at.items()))
     curve_figure(coupling_curves, BIG)
     reach_figure(rows)
