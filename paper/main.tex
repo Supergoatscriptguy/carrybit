@@ -7,6 +7,7 @@
 \usepackage{xurl}
 \usepackage[hidelinks]{hyperref}
 \usepackage{microtype}
+\usepackage{float}
 \graphicspath{{../assets/figures/}}
 
 \title{Length generalization is often present but suppressed:\\
@@ -47,7 +48,7 @@ Scaling attention logits is not new as a trick. \citet{chiang2022overcoming} sca
 
 Figure~\ref{fig:ladder} reproduces the known picture. Every sequential-position format learns the training distribution and falls to exactly zero one digit past it. Abacus, position coupling and fixed-width blankspace extend past the training length and fail gradually; on this budget none exceeds about 2.5$\times$ the training length, and seed variance dominates the differences between methods, as \citet{zhou2024transformers} reported. Only two of six position-coupling seeds generalize at all, with or without weight decay.
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=\linewidth]{length_ladder.png}
 \caption{Exact match against test length for nine input formats on the 3.4M model trained on 1 to 20 digits. Faint lines are seeds, bold is the mean. The two blankspace variants follow \citet{aba2025}; the relative-position rungs use a learned per-head distance bias rather than the relative embeddings of \citet{shaw2018self}, and the paper's headline combination did not train under that substitution.}
@@ -56,7 +57,7 @@ Figure~\ref{fig:ladder} reproduces the known picture. Every sequential-position 
 
 What the usual final-checkpoint table hides is Figure~\ref{fig:erosion}. In every run that generalized, out-of-distribution accuracy rose, peaked between 10k and 25k steps, and then fell, while accuracy at the training length stayed at 100\% and the training loss kept decreasing. The best small position-coupling seed reached 63\% at 40 digits at step 17k and finished at 11\%. One large seed reached 85\% at 60 digits at step 15k and finished at 75\%. The erosion is not caused by the learning-rate schedule: with a constant learning rate it is worse (71\% to 2\%), and the cosine decay to zero merely freezes whichever state the model is in. Without weight decay the picture is mixed: the two seeds that generalized climbed monotonically and kept what they found, but the same fraction of seeds generalized as with weight decay, so weight decay is at most a contributing factor. The methodological point stands regardless: final-checkpoint and best-checkpoint numbers for these methods can differ by 50 points.
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=0.9\linewidth]{generalization_over_training.png}
 \caption{Out-of-distribution exact match as a function of training step for position-coupling runs, at a fixed test length past the training length. Dotted lines are accuracy at the longest training length.}
@@ -68,7 +69,7 @@ What the usual final-checkpoint table hides is Figure~\ref{fig:erosion}. In ever
 
 To know what erodes, we need to know what is there. We take the best small position-coupling model and ask where the carry comes from when it predicts answer digit $i$ (Figure~\ref{fig:carry}). Three measurements. Attention mass at the query position, averaged over answer digits, split by source: the two digits of the same column, the two digits of the column below, the model's own previous output digit $c_{i-1}$, delimiters, or other digits. Teacher-forced accuracy on digit $i$ when the carry feeding it originated $k$ columns below and rippled through $k$ columns summing to exactly 9. And a counterfactual: replace $c_{i-1}$ in the prefix with the digit it would have been without its incoming carry, and count how often the prediction for $c_i$ follows.
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=\linewidth]{find_the_carry.png}
 \caption{Left: attention by source while predicting an answer digit, per head. Right: teacher-forced accuracy against carry-chain length, and the fraction of predictions that follow a corrupted previous output digit.}
@@ -82,7 +83,7 @@ The answer is a ripple-carry adder whose carry wire is the output stream. One he
 
 If the circuit is two sharp lookups, then a longer sequence, with more tokens sharing each coupled position id, should dilute them, and the failure past the training length should look like attention spreading rather than the algorithm breaking. Figure~\ref{fig:dilution} (left) confirms the first part: the digit-adder head's mass on its own column falls with test length in every model, and the seeds whose mass collapses at 30 digits are the seeds whose accuracy collapses there. The middle panel is the honest caveat: measured at the training length, that mass does not visibly soften over training, in either weight-decay setting, so the erosion of Section~\ref{sec:erosion} is not simply this head going blurry. Whatever softens is somewhere else in the circuit, or shows only at longer lengths.
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=\linewidth]{attention_dilution.png}
 \caption{Left: the digit-adder head's attention mass on its column (solid) and exact match (dotted) against test length, final checkpoints of six small position-coupling runs. Middle: the same mass at 20 digits across training, with 40-digit exact match. Right: exact match against length when every head's logits are scaled at inference, mean of three seeds.}
@@ -91,7 +92,7 @@ If the circuit is two sharp lookups, then a longer sequence, with more tokens sh
 
 The intervention is a single scalar. Before the softmax, every head's logits are multiplied by $s$. Nothing is retrained. Table~\ref{tab:small} shows the small position-coupling seeds. Seed 0, which had eroded from 63\% to 5\% at 40 digits, returns to 89\% at $s=1.4$ with in-distribution accuracy untouched. Seed 1, which never reached 40 digits, goes from 0 to 46\% at 30. Seed 2 never generalized and gains nothing. The seed that had trained without weight decay and kept its generalization also gains, from 49\% to 73\% at 50 digits.
 
-\begin{table}[t]
+\begin{table}[H]
 \centering
 \small
 \begin{tabular}{llcccc}
@@ -111,14 +112,14 @@ seed & logits $\times$ & 30 digits & 40 & 50 & 60 \\
 
 Then the large model (Figure~\ref{fig:sweep}, Table~\ref{tab:big}). Seed 1, trained on up to 30 digits, scores 69\% at 60 digits and 0\% at 80 and beyond as trained. At $s=2.0$ it scores 100\% exact match at every length from 10 to 200 digits, on 128 problems per length. That is 6.7$\times$ the training length, matching the best figure reported for this method by \citet{cho2024position}, from a checkpoint that scored zero at 2.7$\times$. In-distribution accuracy is untouched at $s=2.0$ and slips at $s=2.5$. Seed 0 is the counterexample that makes the result interpretable: it gains at 60 digits (0 to 79\% at $s=1.4$), nothing beyond 100 at any scale, and strong scaling destroys it. The knob amplifies the circuit that is present. In seed 1 that circuit was already the complete algorithm and needed only its attention sharpened; in seed 0 it was not.
 
-\begin{figure}[t]
+\begin{figure}[H]
 \centering
 \includegraphics[width=0.8\linewidth]{sharpening_sweep.png}
 \caption{Exact match against test length for the 11M position-coupling models with attention logits scaled at inference. Bold: seed 1. Faint: other seeds. Trained on 1 to 30 digits.}
 \label{fig:sweep}
 \end{figure}
 
-\begin{table}[t]
+\begin{table}[H]
 \centering
 \small
 \begin{tabular}{lcccccc}
