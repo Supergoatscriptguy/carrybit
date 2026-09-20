@@ -255,7 +255,10 @@ Two ablations on the small coupling model, then more seeds of everything:
   two of six ordinary seeds do, so it makes the circuit more likely to form.
   It does not stop the erosion. The best small seed peaked at 91% on 40 digits
   and finished at 28%; one 11M seed peaked at 92% on 60 digits and finished
-  at 4%.
+  at 4%. But it changes who the inference knob helps: a further 1.4x on top
+  of the trained temperature lifts all five of these seeds to 70 to 96% at
+  twice the training length, where ordinary training only produces such a
+  seed a third of the time (the "trained x2" rows of the reach figure below).
 
 So the erosion is real but not universal, and neither the schedule, weight
 decay, nor a constant attention temperature explains it. What is solid is the practical point: papers reporting
