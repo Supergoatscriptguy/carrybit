@@ -137,8 +137,16 @@ seed 1, logits $\times$ & 60 & 80 & 100 & 120 & 150 & 200 \\
 \label{tab:big}
 \end{table}
 
-% TODO: reach figure across every generalizing run (sharpening_reach.png), and the
-% head-by-head sweep (sharpen_by_head.png), once the queued evaluations finish.
+\paragraph{How general is the recovery?} Figure~\ref{fig:reach} applies the same sweep to every run in the study, at 2$\times$ and 3$\times$ each run's training length. Every position-coupling seed that ever generalized gains, some by a large margin: the small seed 0 goes from 6\% to 88\% at 40 digits, the large seed 0 from 0 to 84\% at 60. The one small abacus seed that generalized gains (70\% to 88\% at 40 digits, 0 to 55\% at 60), and both large fixed-blankspace seeds gain at 40 digits (59\% and 63\% to 90\% and 86\%). Seeds that never generalized, in any method, gain nothing at any scale; the small blankspace models, whose sequence length does not change with operand length by construction, do not move. The knob is not free accuracy. It reads out a circuit that training produced and left too soft to use, and it does so across the position schemes that have such a circuit.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.95\linewidth]{sharpening_reach.png}
+\caption{Exact match at 2$\times$ (left) and 3$\times$ (right) the training length for every run, as trained (open) and at the best inference scale (filled), with that scale marked when the gain is at least 5 points. Best scale chosen per run and per length from $\{1, 1.2, 1.4, 1.6, 2, 2.5\}$.}
+\label{fig:reach}
+\end{figure}
+
+% TODO: layer sweep paragraph (sharpen_by_head.png) once the queued evaluation finishes.
 % TODO: results of training with a fixed attention scale (addition_sharp, addition_big_sharp).
 
 \section{Related work}

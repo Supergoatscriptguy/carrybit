@@ -349,10 +349,27 @@ beyond 100 at any scale, and strong scaling breaks it. The knob amplifies the
 circuit that is there. In seed 1 that circuit was already the full algorithm
 and only needed its attention sharpened; in seed 0 it never was.
 
-I have not seen this reported. It is a small thing, one scalar at inference,
-but it means that some of what looks like a model losing length generalization,
-during training or past its training length, is the model keeping the
-algorithm and losing the attention contrast needed to run it.
+How general is it? The same sweep on every run in this README, at 2x and 3x
+each run's training length, as trained versus at its best scale:
+
+![sharpening reach](assets/figures/sharpening_reach.png)
+
+The pattern holds across methods. Every position-coupling seed that ever
+generalized gains, some enormously (the small seed 0 goes from 6% to 88% at 40
+digits). The one abacus seed that generalized gains (70% to 88% at 40 digits,
+0 to 55% at 60). Both 11M blankspace seeds gain at 40 digits (59% and 63% to
+90% and 86%). Seeds that never generalized, in any method, gain nothing at any
+scale, and the small blankspace models do not move. So the knob is not free
+accuracy; it is a way of reading out a circuit that training produced but
+left too soft to use.
+
+Scaling the logits at inference is not itself new. Chiang and Cholak (2022)
+scale by the log of the sequence length and show it is needed for attention
+to represent some formal languages at all lengths; YaRN applies a temperature
+when extending the context of large language models. What this setting adds is
+a case where the circuit being sharpened can be found, the dilution measured,
+and the recovery shown to be of a specific latent computation rather than a
+general improvement.
 
 ```
 uv run python experiments/attention_dilution.py
