@@ -13,4 +13,7 @@ paper/*.bbl
 paper/*.blg
 paper/*.log
 paper/*.out
-paper/
+paper/arxiv/
+paper/arxiv_submission.zip
+paper/abstract.txt
+paper/*.bbl
