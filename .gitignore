@@ -8,3 +8,8 @@ __pycache__/
 *.log
 *.err
 aba.txt
+paper/*.aux
+paper/*.bbl
+paper/*.blg
+paper/*.log
+paper/*.out

@@ -1,0 +1,159 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage[numbers,sort&compress]{natbib}
+\usepackage[hidelinks]{hyperref}
+\usepackage{microtype}
+\graphicspath{{../assets/figures/}}
+
+\title{Length generalization is often present but suppressed:\\
+sharpening attention at inference recovers latent arithmetic circuits}
+\author{Author name\\ \small Independent researcher}
+\date{September 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Small transformers trained on multi-digit addition are known to generalize poorly to operands longer than any seen in training, and the methods that help (reversed digits, abacus embeddings, position coupling, aligned blankspace) are known to be fragile across random seeds. We report a second kind of fragility: in many runs, out-of-distribution accuracy peaks early in training and then erodes while in-distribution accuracy stays at 100\%. We then show that much of what is lost, and much of what was never reached, is not the algorithm but the attention contrast needed to run it at longer lengths. Multiplying the attention logits by a constant at inference, with no retraining, takes an 11M parameter position-coupling model trained on up to 30-digit addition from 0\% to 100\% exact match at 200 digits. On smaller models the same knob recovers most of what erosion removed. The intervention only helps models whose weights already encode the complete algorithm: a second seed of the same model gains nothing past 100 digits at any scale. We locate the circuit that is being sharpened, a ripple-carry adder that reads the carry from the model's own previous output digit, and show with counterfactuals that it handles carry chains of any length. Attention-logit scaling has been used before as a length-extrapolation heuristic; this work supplies a controlled case where the mechanism is visible. Code, checkpoints and every figure are public.
+\end{abstract}
+
+\section{Introduction}
+
+A transformer trained to add 20-digit numbers usually cannot add 25-digit numbers. The literature on this failure has produced a sequence of input formats and position encodings that push the boundary out \citep{lee2023teaching,zhou2024transformers,mcleish2024transformers,cho2024position,aba2025}, and a warning that all of them depend heavily on the random seed \citep{zhou2024transformers}. This paper started as a reproduction of that ladder of methods on one consumer GPU and ended somewhere else.
+
+Three observations led there. First, when we logged out-of-distribution accuracy throughout training rather than only at the end, it peaked early and then eroded in many runs, with in-distribution accuracy pinned at 100\% throughout (Section~\ref{sec:erosion}). Second, when we looked for the carry in a model that had generalized, we found a ripple-carry adder implemented as two attention operations: one head that gathers the two digits of the current column, and heads in later layers that read the model's own previous output digit to recover the incoming carry (Section~\ref{sec:carry}). Third, the models that failed past the training length failed gracefully, with per-digit error rising slowly, rather than collapsing.
+
+Together these suggested that the algorithm survives in the weights and what fails at longer lengths is attention: with more same-position distractors in the sequence, a head that must pick out two tokens spreads its mass. If so, sharpening every head at inference by multiplying its logits by a constant should help, and it should help only models that already have the circuit. Section~\ref{sec:sharpen} tests this. The headline: an 11M parameter position-coupling model trained on 1 to 30 digit operands, which scores 0\% exact match at 100 digits as trained, scores 100\% at every length from 10 to 200 digits with its logits scaled by 2. A second seed of the same configuration, which generalizes to 60 digits as trained, gains nothing beyond 100 at any scale. On the 3.4M models, seeds whose accuracy had eroded during training recover most of it.
+
+Scaling attention logits is not new as a trick. \citet{chiang2022overcoming} scale by the logarithm of sequence length and show it lets small transformers generalize on formal-language tasks; YaRN \citep{peng2023yarn} applies a temperature to attention logits when extending the context window of large language models. Our contribution is not the knob but the controlled setting in which its mechanism can be seen: a task where the algorithm is known, the circuit can be located, the dilution can be measured, and the knob can be shown to restore a specific latent computation rather than to improve things in general.
+
+\section{Setup}
+\label{sec:setup}
+
+\paragraph{Task.} Addition of two integers with 1 to $N$ digits each, presented as a token sequence \texttt{\$a+b=c\$} over a 16-symbol vocabulary. Following \citet{lee2023teaching}, digits are written least significant first, so that answer digit $i$ depends only on the two operand digits in column $i$ and the carry from column $i-1$. Operands are zero-padded to a common length and the answer to one more digit. Examples are generated on the fly; the model never sees the same problem twice. The loss is next-token prediction on the answer tokens and the closing delimiter only.
+
+\paragraph{Position schemes.} We compare learned absolute positions (\emph{sequential}), abacus embeddings \citep{mcleish2024transformers}, in which the position id restarts at 1 for every number with a random offset during training, and position coupling \citep{cho2024position}, in which the digits of equal significance in both operands and the answer share one position id. We also implement the fixed-width aligned blankspace augmentation of \citet{aba2025}, in which every number is padded with blank tokens to a fixed width during training and at test time, so the sequence length never changes.
+
+\paragraph{Models.} Pre-norm decoder-only transformers with ReLU MLPs. The small model has 4 layers, width 256, 4 heads (3.4M parameters) and is trained on 1 to 20 digit operands for 50k steps of 256 examples. The large model has 6 layers, width 384, 6 heads (11M parameters) and is trained on 1 to 30 digit operands for 60k steps of 384 examples. AdamW, cosine decay, weight decay 0.1 unless stated. Every configuration is run with three seeds unless stated; the large position-coupling model with four.
+
+\paragraph{Evaluation.} Exact match on the full answer under greedy decoding, on 128 to 256 problems whose operands both have exactly $n$ digits, for $n$ from 5 to 100 (small) or 200 (large). We report the final checkpoint unless stated, and we log all test lengths every 2,500 steps so that accuracy during training is also available.
+
+\section{The ladder, and what erodes}
+\label{sec:erosion}
+
+Figure~\ref{fig:ladder} reproduces the known picture. Every sequential-position format learns the training distribution and falls to exactly zero one digit past it. Abacus, position coupling and fixed-width blankspace extend past the training length and fail gradually; on this budget none exceeds about 2.5$\times$ the training length, and seed variance dominates the differences between methods, as \citet{zhou2024transformers} reported. Only two of six position-coupling seeds generalize at all, with or without weight decay.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{length_ladder.png}
+\caption{Exact match against test length for nine input formats on the 3.4M model trained on 1 to 20 digits. Faint lines are seeds, bold is the mean. The two blankspace variants follow \citet{aba2025}; the relative-position rungs use a learned per-head distance bias rather than the relative embeddings of \citet{shaw2018self}, and the paper's headline combination did not train under that substitution.}
+\label{fig:ladder}
+\end{figure}
+
+What the usual final-checkpoint table hides is Figure~\ref{fig:erosion}. In every run that generalized, out-of-distribution accuracy rose, peaked between 10k and 25k steps, and then fell, while accuracy at the training length stayed at 100\% and the training loss kept decreasing. The best small position-coupling seed reached 63\% at 40 digits at step 17k and finished at 11\%. One large seed reached 85\% at 60 digits at step 15k and finished at 75\%. The erosion is not caused by the learning-rate schedule: with a constant learning rate it is worse (71\% to 2\%), and the cosine decay to zero merely freezes whichever state the model is in. Without weight decay the picture is mixed: the two seeds that generalized climbed monotonically and kept what they found, but the same fraction of seeds generalized as with weight decay, so weight decay is at most a contributing factor. The methodological point stands regardless: final-checkpoint and best-checkpoint numbers for these methods can differ by 50 points.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.9\linewidth]{generalization_over_training.png}
+\caption{Out-of-distribution exact match as a function of training step for position-coupling runs, at a fixed test length past the training length. Dotted lines are accuracy at the longest training length.}
+\label{fig:erosion}
+\end{figure}
+
+\section{The carry circuit}
+\label{sec:carry}
+
+To know what erodes, we need to know what is there. We take the best small position-coupling model and ask where the carry comes from when it predicts answer digit $i$ (Figure~\ref{fig:carry}). Three measurements. Attention mass at the query position, averaged over answer digits, split by source: the two digits of the same column, the two digits of the column below, the model's own previous output digit $c_{i-1}$, delimiters, or other digits. Teacher-forced accuracy on digit $i$ when the carry feeding it originated $k$ columns below and rippled through $k$ columns summing to exactly 9. And a counterfactual: replace $c_{i-1}$ in the prefix with the digit it would have been without its incoming carry, and count how often the prediction for $c_i$ follows.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{find_the_carry.png}
+\caption{Left: attention by source while predicting an answer digit, per head. Right: teacher-forced accuracy against carry-chain length, and the fraction of predictions that follow a corrupted previous output digit.}
+\label{fig:carry}
+\end{figure}
+
+The answer is a ripple-carry adder whose carry wire is the output stream. One head in layer 0 puts 91\% of its attention on the two digits of the current column: it is the digit adder. Heads in layers 2 and 3 attend to the previous output digit. Whenever the column below sums to 9, so that the carry into column $i$ depends on the carry into column $i-1$, corrupting $c_{i-1}$ flips the prediction for $c_i$ 100\% of the time, for chains of every length tested. The model reads its own last digit, compares it with $a_{i-1}+b_{i-1}$, and infers whether a carry arrived. Because the recursion runs through autoregression rather than through depth, chain length costs nothing: accuracy is 100\% out to 14-column chains. Every operation in this circuit is a sharp attention lookup of one or two tokens.
+
+\section{Sharpening attention at inference}
+\label{sec:sharpen}
+
+If the circuit is two sharp lookups, then a longer sequence, with more tokens sharing each coupled position id, should dilute them, and the failure past the training length should look like attention spreading rather than the algorithm breaking. Figure~\ref{fig:dilution} (left) confirms the first part: the digit-adder head's mass on its own column falls with test length in every model, and the seeds whose mass collapses at 30 digits are the seeds whose accuracy collapses there. The middle panel is the honest caveat: measured at the training length, that mass does not visibly soften over training, in either weight-decay setting, so the erosion of Section~\ref{sec:erosion} is not simply this head going blurry. Whatever softens is somewhere else in the circuit, or shows only at longer lengths.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{attention_dilution.png}
+\caption{Left: the digit-adder head's attention mass on its column (solid) and exact match (dotted) against test length, final checkpoints of six small position-coupling runs. Middle: the same mass at 20 digits across training, with 40-digit exact match. Right: exact match against length when every head's logits are scaled at inference, mean of three seeds.}
+\label{fig:dilution}
+\end{figure}
+
+The intervention is a single scalar. Before the softmax, every head's logits are multiplied by $s$. Nothing is retrained. Table~\ref{tab:small} shows the small position-coupling seeds. Seed 0, which had eroded from 63\% to 5\% at 40 digits, returns to 89\% at $s=1.4$ with in-distribution accuracy untouched. Seed 1, which never reached 40 digits, goes from 0 to 46\% at 30. Seed 2 never generalized and gains nothing. The seed that had trained without weight decay and kept its generalization also gains, from 49\% to 73\% at 50 digits.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{llcccc}
+\toprule
+seed & logits $\times$ & 30 digits & 40 & 50 & 60 \\
+\midrule
+0 & 1.0 & 0.93 & 0.05 & 0 & 0 \\
+0 & 1.4 & 1.00 & 0.89 & 0.34 & 0.04 \\
+1 & 1.0 & 0 & 0 & 0 & 0 \\
+1 & 1.4 & 0.46 & 0 & 0 & 0 \\
+2 & any & 0 & 0 & 0 & 0 \\
+\bottomrule
+\end{tabular}
+\caption{Exact match for the final checkpoints of the 3.4M position-coupling seeds (weight decay 0.1) with attention logits scaled at inference.}
+\label{tab:small}
+\end{table}
+
+Then the large model (Figure~\ref{fig:sweep}, Table~\ref{tab:big}). Seed 1, trained on up to 30 digits, scores 69\% at 60 digits and 0\% at 80 and beyond as trained. At $s=2.0$ it scores 100\% exact match at every length from 10 to 200 digits, on 128 problems per length. That is 6.7$\times$ the training length, matching the best figure reported for this method by \citet{cho2024position}, from a checkpoint that scored zero at 2.7$\times$. In-distribution accuracy is untouched at $s=2.0$ and slips at $s=2.5$. Seed 0 is the counterexample that makes the result interpretable: it gains at 60 digits (0 to 79\% at $s=1.4$), nothing beyond 100 at any scale, and strong scaling destroys it. The knob amplifies the circuit that is present. In seed 1 that circuit was already the complete algorithm and needed only its attention sharpened; in seed 0 it was not.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.8\linewidth]{sharpening_sweep.png}
+\caption{Exact match against test length for the 11M position-coupling models with attention logits scaled at inference. Bold: seed 1. Faint: other seeds. Trained on 1 to 30 digits.}
+\label{fig:sweep}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcccccc}
+\toprule
+seed 1, logits $\times$ & 60 & 80 & 100 & 120 & 150 & 200 \\
+\midrule
+1.0 & 0.69 & 0 & 0 & 0 & 0 & 0 \\
+1.4 & 1.00 & 1.00 & 0.99 & 0.93 & 0.48 & 0 \\
+1.6 & 1.00 & 1.00 & 1.00 & 1.00 & 0.97 & 0.59 \\
+2.0 & 1.00 & 1.00 & 1.00 & 1.00 & 1.00 & 1.00 \\
+2.5 & 1.00 & 1.00 & 1.00 & 1.00 & 1.00 & 1.00 \\
+\bottomrule
+\end{tabular}
+\caption{The 11M position-coupling model, seed 1, trained on up to 30 digits. Exact match on 128 problems per length. At $s=2.5$ accuracy at 10 digits drops to 0.90.}
+\label{tab:big}
+\end{table}
+
+% TODO: reach figure across every generalizing run (sharpening_reach.png), and the
+% head-by-head sweep (sharpen_by_head.png), once the queued evaluations finish.
+% TODO: results of training with a fixed attention scale (addition_sharp, addition_big_sharp).
+
+\section{Related work}
+
+Grokking \citep{power2022grokking,nanda2023progress} and its mechanistic account on modular addition are the reason this project began; we reproduce the claim of \citet{swaroop2026latent} that the Fourier structure is present before generalization, and extend it to a transformer, but that result is separate from the one reported here and is described in the repository. The length-generalization ladder follows \citet{lee2023teaching}, \citet{zhou2024transformers}, \citet{mcleish2024transformers}, \citet{cho2024position} and \citet{aba2025}. The observation that a model's per-digit rule is local and that only indexing fails at length is made in \citet{lee2023teaching} and \citet{aba2025}; we add the counterfactual showing that the carry is read from the model's own output and that chain length is free.
+
+Attention-logit scaling as a length-extrapolation device appears in \citet{chiang2022overcoming}, who scale by $\log n$ and prove that it is needed for self-attention to represent certain formal languages at all lengths, and in YaRN \citep{peng2023yarn}, which applies a temperature when extending the context of rotary-position models. Our setting differs in three ways that make it a mechanism study rather than a method: the model uses learned position ids, not rotary or none; the factor is a constant chosen after training rather than a function of length; and the task allows the sharpened circuit to be located and its dependence on the intervention to be tested per seed.
+
+\section{Limitations and what we would do next}
+
+The 200-digit result is one seed of two at the time of writing, and the queued runs add two more seeds and the equivalent sweep on every other generalizing model in the repository. The dilution measurement in Figure~\ref{fig:dilution} explains the failure with length but not the erosion during training, which remains unexplained. The relative-position variants use a per-head distance bias rather than the relative embeddings of \citet{shaw2018self}, and the blankspace paper's headline combination did not learn under that substitution; a faithful implementation is future work. Everything was run on a single consumer GPU with models under 11M parameters and at most six seeds per configuration.
+
+Three experiments follow directly. Scaling every head is crude; a head-by-head sweep would say which heads want it and might separate the seed that reaches 200 digits from the one that stops at 60. Sharpening during training rather than after it, with a fixed temperature on the logits, would test whether the erosion can be prevented rather than repaired. And the same knob applied to abacus and blankspace models would say how general the recovery is. All three are cheap on the checkpoints we release.
+
+\paragraph{Reproducibility.} Code, configurations and every figure are at \url{https://github.com/Supergoatscriptguy/carrybit}. Final checkpoints of all 46 runs are at \url{https://huggingface.co/SuperGoatScriptGuy/carrybit}. Every number in this paper is produced by a script in the repository's \texttt{experiments/} folder.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}
